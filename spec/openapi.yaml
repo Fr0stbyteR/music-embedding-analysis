@@ -1,0 +1,1445 @@
+openapi: 3.1.0
+info:
+  title: Local Music Annotation Service
+  version: 1.0.0-draft
+  description: >-
+    Local sidecar API for score-aligned, human-in-the-loop music annotation.
+    All mutating endpoints are auditable. Long operations are asynchronous jobs.
+servers:
+  - url: http://127.0.0.1:{port}
+    variables:
+      port:
+        default: "49321"
+security:
+  - sessionToken: []
+tags:
+  - name: System
+  - name: Projects
+  - name: Assets
+  - name: Scores
+  - name: Taxonomies
+  - name: Annotations
+  - name: Review
+  - name: Models
+  - name: Detection Plans
+  - name: Training
+  - name: Jobs
+  - name: Assistants
+
+paths:
+  /v1/health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Process is ready to accept authenticated requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /v1/capabilities:
+    get:
+      tags: [System]
+      operationId: getCapabilities
+      responses:
+        "200":
+          description: Hardware, provider, format, and training capabilities.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capabilities"
+
+  /v1/events:
+    get:
+      tags: [System]
+      operationId: streamEvents
+      description: >-
+        Server-Sent Events. Clients reconnect with Last-Event-ID. Event payloads
+        follow EventEnvelope; named events include job.updated,
+        project.changed, annotation.changed, model.published, and warning.
+      responses:
+        "200":
+          description: Event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /v1/providers/{providerId}:load:
+    post:
+      tags: [Models]
+      operationId: loadProvider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderLoadRequest" }
+      responses:
+        "202":
+          description: Model load job accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobAccepted" }
+
+  /v1/providers/{providerId}:probe:
+    post:
+      tags: [Models]
+      operationId: probeProvider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "202":
+          description: One-second audio and optional text probe accepted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobAccepted" }
+
+  /v1/providers/{providerId}:unload:
+    post:
+      tags: [Models]
+      operationId: unloadProvider
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Provider unloaded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderCapability" }
+
+  /v1/projects:
+    post:
+      tags: [Projects]
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreate"
+      responses:
+        "201":
+          description: Project created.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /v1/projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Projects]
+      operationId: getProject
+      responses:
+        "200":
+          description: Project summary.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/projects/{projectId}/assets:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Assets]
+      operationId: listAssets
+      responses:
+        "200":
+          description: Project assets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Asset" }
+    post:
+      tags: [Assets]
+      operationId: importAsset
+      description: >-
+        Import a trusted path resolved by the extension host. The backend hashes
+        and inspects the file asynchronously. The Webview must not call this
+        endpoint directly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssetImport"
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/scores:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Scores]
+      operationId: importScore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScoreImport"
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/alignments:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Scores]
+      operationId: createAlignment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlignmentCreate"
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/alignments/{alignmentId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: alignmentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Scores]
+      operationId: getAlignment
+      responses:
+        "200":
+          description: Alignment with anchors and confidence regions.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Alignment" }
+    patch:
+      tags: [Scores]
+      operationId: updateAlignmentAnchors
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlignmentPatch"
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/projects/{projectId}/taxonomies:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Taxonomies]
+      operationId: listTaxonomies
+      responses:
+        "200":
+          description: Taxonomy versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Taxonomy" }
+    post:
+      tags: [Taxonomies]
+      operationId: createTaxonomy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaxonomyCreate" }
+      responses:
+        "201":
+          description: Immutable taxonomy version created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Taxonomy" }
+
+  /v1/projects/{projectId}/annotations:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Annotations]
+      operationId: queryAnnotations
+      parameters:
+        - name: assetId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: startSample
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: endSample
+          in: query
+          schema: { type: integer, minimum: 1 }
+        - name: state
+          in: query
+          schema:
+            type: array
+            items: { $ref: "#/components/schemas/AnnotationState" }
+      responses:
+        "200":
+          description: Annotations overlapping the requested interval.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Annotation" }
+    post:
+      tags: [Annotations]
+      operationId: createAnnotation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnnotationCreate" }
+      responses:
+        "201":
+          description: Annotation created.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Annotation" }
+
+  /v1/projects/{projectId}/annotations/{annotationId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: annotationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Annotations]
+      operationId: updateAnnotation
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema: { $ref: "#/components/schemas/AnnotationPatch" }
+      responses:
+        "200":
+          description: Updated annotation.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Annotation" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [Annotations]
+      operationId: deleteAnnotation
+      description: Soft-deletes the annotation and appends an audit event.
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      responses:
+        "204": { description: Annotation soft-deleted. }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/projects/{projectId}/annotations:bulk:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Annotations]
+      operationId: bulkEditAnnotations
+      description: Atomic metadata transaction for a bounded set of edits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkAnnotationEdit" }
+      responses:
+        "200":
+          description: Bulk edit result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkAnnotationResult" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/projects/{projectId}/inference-jobs:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Models]
+      operationId: startInference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InferenceRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/detection-plans:compile:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Detection Plans]
+      operationId: compileDetectionPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DetectionPlanCompileRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/detection-plans/{planId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: planId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Detection Plans]
+      operationId: getDetectionPlan
+      responses:
+        "200":
+          description: Versioned detection plan.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "./detection-plan.schema.json" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Detection Plans]
+      operationId: updateDetectionPlan
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "./detection-plan.schema.json" }
+      responses:
+        "200":
+          description: Updated plan.
+          headers:
+            ETag: { $ref: "#/components/headers/ETag" }
+          content:
+            application/json:
+              schema: { $ref: "./detection-plan.schema.json" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/projects/{projectId}/detection-plans/{planId}:validate:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: planId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Detection Plans]
+      operationId: validateDetectionPlan
+      responses:
+        "200":
+          description: Schema, taxonomy, provider, and calibration validation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DetectionPlanValidation" }
+
+  /v1/projects/{projectId}/detection-plans/{planId}:preview:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: planId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Detection Plans]
+      operationId: previewDetectionPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DetectionPlanRunRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/detection-plans/{planId}:run:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: planId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Detection Plans]
+      operationId: runDetectionPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DetectionPlanRunRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/detection-runs/{runId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: runId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Detection Plans]
+      operationId: getDetectionRun
+      responses:
+        "200":
+          description: Run state and frozen plan revision.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DetectionRun" }
+
+  /v1/projects/{projectId}/detection-runs/{runId}/candidates:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: runId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Detection Plans]
+      operationId: listDetectionCandidates
+      parameters:
+        - name: assetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: startSample
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: endSample
+          in: query
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Candidate labels with evidence and decisions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DetectionCandidate" }
+
+  /v1/projects/{projectId}/prototype-sets/{setId}:rebuild:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: setId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Detection Plans]
+      operationId: rebuildPrototypeSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrototypeSetRebuildRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/review-queue:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Review]
+      operationId: getReviewQueue
+      parameters:
+        - name: assetId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: strategy
+          in: query
+          schema: { $ref: "#/components/schemas/ReviewStrategy" }
+      responses:
+        "200":
+          description: Ranked review items.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ReviewItem" }
+
+  /v1/projects/{projectId}/snapshots:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Training]
+      operationId: createDatasetSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SnapshotCreate" }
+      responses:
+        "201":
+          description: Immutable training snapshot created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DatasetSnapshot" }
+
+  /v1/projects/{projectId}/training-jobs:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Training]
+      operationId: startTraining
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrainingRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/model-versions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Models]
+      operationId: listModelVersions
+      responses:
+        "200":
+          description: Model versions and validation summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ModelVersion" }
+
+  /v1/projects/{projectId}/model-versions/{modelVersionId}:publish:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: modelVersionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Models]
+      operationId: publishModelVersion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublishRequest" }
+      responses:
+        "200":
+          description: Published model version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelVersion" }
+        "422":
+          description: Validation gates did not pass.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /v1/projects/{projectId}/assistant-proposals:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [Assistants]
+      operationId: createAssistantProposal
+      description: Creates a reviewable proposal; it never applies changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssistantProposalRequest" }
+      responses:
+        "202": { $ref: "#/components/responses/JobAccepted" }
+
+  /v1/projects/{projectId}/assistant-proposals/{proposalId}:apply:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: proposalId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Assistants]
+      operationId: applyAssistantProposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProposalApply" }
+      responses:
+        "200":
+          description: Explicitly selected proposal operations applied.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditEvent" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Jobs]
+      operationId: getJob
+      responses:
+        "200":
+          description: Current job state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/jobs/{jobId}:cancel:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Jobs]
+      operationId: cancelJob
+      responses:
+        "202":
+          description: Cancellation requested.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+
+components:
+  securitySchemes:
+    sessionToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-session-token
+
+  headers:
+    ETag:
+      description: Quoted resource revision used for optimistic concurrency.
+      schema: { type: string, examples: ['"revision-7"'] }
+
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+
+  responses:
+    JobAccepted:
+      description: Asynchronous job accepted.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/JobAccepted" }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: Revision conflict or incompatible project state.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    Health:
+      type: object
+      required: [status, protocolVersion, serviceVersion]
+      properties:
+        status: { const: ok }
+        protocolVersion: { type: string, examples: [music-annotation/1] }
+        serviceVersion: { type: string }
+    Capabilities:
+      type: object
+      required: [devices, providers, scoreFormats, trainingModes]
+      properties:
+        devices:
+          type: array
+          items: { type: string, enum: [cpu, cuda, mps, directml] }
+        providers:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderCapability" }
+        scoreFormats:
+          type: array
+          items: { type: string, enum: [musicxml, midi, pdf, image] }
+        trainingModes:
+          type: array
+          items: { $ref: "#/components/schemas/TrainingMode" }
+    ProviderCapability:
+      type: object
+      required: [providerId, installed, supportsFrameEmbeddings, supportsTraining]
+      properties:
+        providerId: { type: string }
+        displayName: { type: string }
+        installed: { type: boolean }
+        loaded: { type: boolean }
+        state: { type: string, enum: [not_installed, available, loading, loaded, failed] }
+        supportsFrameEmbeddings: { type: boolean }
+        supportsTextEmbeddings: { type: boolean }
+        supportsTraining: { type: boolean }
+        weightLicense: { type: [string, "null"] }
+        commercialUse: { type: [boolean, "null"] }
+        sampleRate: { type: integer }
+        device: { type: [string, "null"] }
+        error: { type: [string, "null"] }
+    ProviderLoadRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        device: { type: string, enum: [auto, cpu, cuda], default: auto }
+        checkpointPath: { type: [string, "null"] }
+        allowDownload: { type: boolean, default: false }
+    ProjectCreate:
+      type: object
+      additionalProperties: false
+      required: [name, directory]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        directory: { type: string, description: Trusted absolute directory path. }
+        description: { type: string, maxLength: 5000, default: "" }
+    Project:
+      type: object
+      required: [id, name, directory, revision, createdAt, updatedAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        directory: { type: string }
+        description: { type: string }
+        activeTaxonomyVersion: { type: [string, "null"] }
+        activeModelVersionId: { type: [string, "null"], format: uuid }
+        revision: { type: integer, minimum: 1 }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+        updatedAt: { $ref: "#/components/schemas/Timestamp" }
+    AssetKind:
+      type: string
+      enum: [audio, score, annotation-import]
+    AssetImport:
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path: { type: string, description: Trusted absolute audio path resolved by the extension host. }
+        name: { type: [string, "null"], maxLength: 500 }
+    Asset:
+      type: object
+      required: [id, name, path, contentHash, sampleRate, channels, samples, durationSeconds, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        path: { type: string }
+        contentHash: { type: string }
+        sampleRate: { type: integer, minimum: 1 }
+        channels: { type: integer, minimum: 1 }
+        samples: { type: integer, minimum: 1 }
+        durationSeconds: { type: number, exclusiveMinimum: 0 }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    ScoreImport:
+      type: object
+      additionalProperties: false
+      required: [sourcePath, format]
+      properties:
+        sourcePath: { type: string }
+        format: { type: string, enum: [musicxml, midi, pdf, image] }
+        omrProviderId: { type: [string, "null"] }
+    ScorePosition:
+      type: object
+      required: [measure]
+      properties:
+        partId: { type: [string, "null"] }
+        measure: { type: integer, minimum: 0 }
+        beat: { type: number, minimum: 0, default: 0 }
+        noteId: { type: [string, "null"] }
+    AlignmentCreate:
+      type: object
+      additionalProperties: false
+      required: [audioAssetId, scoreAssetId]
+      properties:
+        audioAssetId: { $ref: "#/components/schemas/UUID" }
+        scoreAssetId: { $ref: "#/components/schemas/UUID" }
+        performedOrder:
+          type: array
+          items:
+            type: object
+            required: [startMeasure, endMeasure]
+            properties:
+              startMeasure: { type: integer, minimum: 0 }
+              endMeasure: { type: integer, minimum: 0 }
+        config: { type: object, additionalProperties: true }
+    AlignmentAnchor:
+      type: object
+      required: [id, scorePosition, audioSample, source, confidence]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        scorePosition: { $ref: "#/components/schemas/ScorePosition" }
+        audioSample: { type: integer, minimum: 0 }
+        source: { type: string, enum: [automatic, human] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    Alignment:
+      type: object
+      required: [id, audioAssetId, scoreAssetId, anchors, revision, state]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        audioAssetId: { $ref: "#/components/schemas/UUID" }
+        scoreAssetId: { $ref: "#/components/schemas/UUID" }
+        anchors:
+          type: array
+          items: { $ref: "#/components/schemas/AlignmentAnchor" }
+        lowConfidenceRegions:
+          type: array
+          items: { $ref: "#/components/schemas/SampleRange" }
+        state: { type: string, enum: [draft, ready, stale] }
+        revision: { type: integer, minimum: 1 }
+    AlignmentPatch:
+      type: object
+      additionalProperties: false
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          items:
+            type: object
+            required: [op]
+            properties:
+              op: { type: string, enum: [add, move, remove] }
+              anchorId: { type: [string, "null"], format: uuid }
+              scorePosition:
+                oneOf:
+                  - $ref: "#/components/schemas/ScorePosition"
+                  - type: "null"
+              audioSample: { type: [integer, "null"], minimum: 0 }
+    TaxonomyCreate:
+      type: object
+      additionalProperties: false
+      required: [name, labels]
+      properties:
+        name: { type: string }
+        parentVersion: { type: [string, "null"] }
+        labels:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/TaxonomyLabel" }
+    Taxonomy:
+      allOf:
+        - $ref: "#/components/schemas/TaxonomyCreate"
+        - type: object
+          required: [id, version, createdAt]
+          properties:
+            id: { $ref: "#/components/schemas/UUID" }
+            version: { type: string }
+            createdAt: { $ref: "#/components/schemas/Timestamp" }
+    TaxonomyLabel:
+      type: object
+      additionalProperties: false
+      required: [id, names]
+      properties:
+        id: { type: string, pattern: "^[a-z0-9][a-z0-9._-]*$" }
+        parentId: { type: [string, "null"] }
+        names:
+          type: object
+          required: [zh, en]
+          properties:
+            zh: { type: string }
+            en: { type: string }
+        aliases:
+          type: array
+          items: { type: string }
+        definition: { type: string }
+        acousticCues:
+          type: array
+          items: { type: string }
+        exclusionCues:
+          type: array
+          items: { type: string }
+        confusableWith:
+          type: array
+          items: { type: string }
+        canCooccurWith:
+          type: array
+          items: { type: string }
+        minimumDurationMs: { type: [integer, "null"], minimum: 1 }
+        recommendedContextMs: { type: [integer, "null"], minimum: 1 }
+    AnnotationState:
+      type: string
+      enum: [suggested, confirmed, rejected, ambiguous]
+    AnnotationProvenance:
+      type: string
+      enum: [human, model, llm, import]
+    SampleRange:
+      type: object
+      required: [startSample, endSample]
+      properties:
+        startSample: { type: integer, minimum: 0 }
+        endSample: { type: integer, minimum: 1 }
+    AnnotationCreate:
+      type: object
+      additionalProperties: false
+      required: [assetId, startSample, endSample, labelIds, state, provenance]
+      properties:
+        assetId: { $ref: "#/components/schemas/UUID" }
+        startSample: { type: integer, minimum: 0 }
+        endSample: { type: integer, minimum: 1 }
+        labelIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        state: { $ref: "#/components/schemas/AnnotationState" }
+        provenance: { $ref: "#/components/schemas/AnnotationProvenance" }
+        confidence: { type: [number, "null"], minimum: 0, maximum: 1 }
+        candidateScores:
+          type: object
+          additionalProperties: { type: number }
+        modelVersionId: { type: [string, "null"], format: uuid }
+        scorePosition:
+          oneOf:
+            - $ref: "#/components/schemas/ScorePosition"
+            - type: "null"
+        note: { type: string, maxLength: 5000, default: "" }
+    Annotation:
+      allOf:
+        - $ref: "#/components/schemas/AnnotationCreate"
+        - type: object
+          required: [id, revision, createdAt, updatedAt]
+          properties:
+            id: { $ref: "#/components/schemas/UUID" }
+            revision: { type: integer, minimum: 1 }
+            createdAt: { $ref: "#/components/schemas/Timestamp" }
+            updatedAt: { $ref: "#/components/schemas/Timestamp" }
+    AnnotationPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        startSample: { type: integer, minimum: 0 }
+        endSample: { type: integer, minimum: 1 }
+        labelIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        state: { $ref: "#/components/schemas/AnnotationState" }
+        note: { type: string, maxLength: 5000 }
+    BulkAnnotationEdit:
+      type: object
+      required: [operations]
+      properties:
+        operations:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            type: object
+            required: [op]
+            properties:
+              op: { type: string, enum: [create, update, delete] }
+              annotationId: { type: [string, "null"], format: uuid }
+              expectedRevision: { type: [integer, "null"], minimum: 1 }
+              value:
+                oneOf:
+                  - $ref: "#/components/schemas/AnnotationCreate"
+                  - $ref: "#/components/schemas/AnnotationPatch"
+                  - type: "null"
+    BulkAnnotationResult:
+      type: object
+      required: [annotations, auditEventId]
+      properties:
+        annotations:
+          type: array
+          items: { $ref: "#/components/schemas/Annotation" }
+        auditEventId: { $ref: "#/components/schemas/UUID" }
+    DetectionPlanCompileRequest:
+      type: object
+      additionalProperties: false
+      required: [instruction]
+      properties:
+        instruction: { type: string, minLength: 1, maxLength: 10000 }
+        taxonomyVersion: { type: [string, "null"] }
+        preferredLanguages:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [zh, en] }
+        availableProviderIds:
+          type: array
+          uniqueItems: true
+          items: { type: string }
+        targets:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/DetectionTarget" }
+    DetectionTarget:
+      type: object
+      additionalProperties: false
+      required: [labelId, name, family]
+      properties:
+        labelId: { type: string, pattern: "^[a-z0-9][a-z0-9._-]*$" }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        family: { type: string, enum: [instrument, technique, voice, pitch, rhythm, dynamics, timbre, harmony, form, affect, production, custom] }
+        positivePrompts:
+          type: array
+          maxItems: 32
+          items: { type: string }
+        negativePrompts:
+          type: array
+          maxItems: 32
+          items: { type: string }
+    DetectionPlanRunRequest:
+      type: object
+      additionalProperties: false
+      required: [planRevision, assetIds]
+      properties:
+        planRevision: { type: integer, minimum: 1 }
+        assetIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/UUID" }
+        ranges:
+          type: array
+          items:
+            type: object
+            required: [assetId, startSample, endSample]
+            properties:
+              assetId: { $ref: "#/components/schemas/UUID" }
+              startSample: { type: integer, minimum: 0 }
+              endSample: { type: integer, minimum: 1 }
+        maximumCandidates: { type: integer, minimum: 1, maximum: 100000 }
+    DetectionPlanValidation:
+      type: object
+      required: [valid, errors, warnings, runnableLabels]
+      properties:
+        valid: { type: boolean }
+        errors:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationFinding" }
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationFinding" }
+        runnableLabels:
+          type: array
+          items: { type: string }
+    ValidationFinding:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        jsonPointer: { type: [string, "null"] }
+        labelId: { type: [string, "null"] }
+    DetectionRun:
+      type: object
+      required: [id, planId, planRevision, state, preview, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        planId: { $ref: "#/components/schemas/UUID" }
+        planRevision: { type: integer, minimum: 1 }
+        state: { $ref: "#/components/schemas/JobState" }
+        preview: { type: boolean }
+        candidateCount: { type: integer, minimum: 0 }
+        decisionCounts:
+          type: object
+          additionalProperties: { type: integer, minimum: 0 }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    DetectionCandidate:
+      type: object
+      required: [id, runId, assetId, startSample, endSample, labelId, score, decision, evidence]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        runId: { $ref: "#/components/schemas/UUID" }
+        assetId: { $ref: "#/components/schemas/UUID" }
+        startSample: { type: integer, minimum: 0 }
+        endSample: { type: integer, minimum: 1 }
+        labelId: { type: string }
+        score: { type: number, minimum: 0, maximum: 1 }
+        uncertainty: { type: [number, "null"], minimum: 0, maximum: 1 }
+        decision: { type: string, enum: [auto_accept, review, abstain, suppress] }
+        evidence: { $ref: "#/components/schemas/EvidenceBundle" }
+    EvidenceBundle:
+      type: object
+      required: [detectorScores, constraints]
+      properties:
+        detectorScores:
+          type: object
+          additionalProperties: { type: number }
+        prototypeDistances:
+          type: object
+          additionalProperties: { type: number, minimum: 0 }
+        descriptors:
+          type: object
+          additionalProperties: { type: number }
+        constraints:
+          type: array
+          items:
+            type: object
+            required: [field, passed, effect]
+            properties:
+              field: { type: string }
+              passed: { type: boolean }
+              effect: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+    PrototypeSetRebuildRequest:
+      type: object
+      additionalProperties: false
+      required: [snapshotId, labelIds]
+      properties:
+        snapshotId: { $ref: "#/components/schemas/UUID" }
+        labelIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        includeHardNegatives: { type: boolean, default: true }
+        groupingKeys:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [performer, instrument, session, source, event] }
+    InferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [assetIds, modelVersionId, taxonomyVersion]
+      properties:
+        assetIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/UUID" }
+        modelVersionId: { $ref: "#/components/schemas/UUID" }
+        taxonomyVersion: { type: string }
+        ranges:
+          type: array
+          items: { $ref: "#/components/schemas/SampleRange" }
+        replaceExistingSuggestions: { type: boolean, default: true }
+        contextSeconds: { type: number, exclusiveMinimum: 0, maximum: 30, default: 4 }
+    ReviewStrategy:
+      type: string
+      enum: [uncertainty, disagreement, coverage, out-of-distribution, random-audit, mixed]
+      default: mixed
+    ReviewItem:
+      type: object
+      required: [id, assetId, range, reason, priority]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        annotationId: { type: [string, "null"], format: uuid }
+        assetId: { $ref: "#/components/schemas/UUID" }
+        range: { $ref: "#/components/schemas/SampleRange" }
+        reason: { $ref: "#/components/schemas/ReviewStrategy" }
+        priority: { type: number }
+        explanation: { type: string }
+    SnapshotCreate:
+      type: object
+      additionalProperties: false
+      required: [taxonomyVersion, inclusionPolicy, splitPolicy]
+      properties:
+        taxonomyVersion: { type: string }
+        inclusionPolicy:
+          type: object
+          properties:
+            states:
+              type: array
+              items: { $ref: "#/components/schemas/AnnotationState" }
+              default: [confirmed]
+            provenances:
+              type: array
+              items: { $ref: "#/components/schemas/AnnotationProvenance" }
+              default: [human]
+        splitPolicy:
+          type: object
+          required: [groupBy]
+          properties:
+            groupBy:
+              type: array
+              items: { type: string, enum: [performer, session, instrument, source, event] }
+            validationFraction: { type: number, minimum: 0.05, maximum: 0.4, default: 0.2 }
+            seed: { type: integer, default: 42 }
+    DatasetSnapshot:
+      type: object
+      required: [id, taxonomyVersion, annotationCount, checksum, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        taxonomyVersion: { type: string }
+        annotationCount: { type: integer, minimum: 0 }
+        groupCount: { type: integer, minimum: 0 }
+        warnings:
+          type: array
+          items: { type: string }
+        checksum: { type: string }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    TrainingMode:
+      type: string
+      enum: [prototype, head, partial-backbone, contrastive-adapter]
+    TrainingRequest:
+      type: object
+      additionalProperties: false
+      required: [snapshotId, providerId, baseModelId, mode]
+      properties:
+        snapshotId: { $ref: "#/components/schemas/UUID" }
+        providerId: { type: string }
+        baseModelId: { type: string }
+        mode: { $ref: "#/components/schemas/TrainingMode" }
+        device: { type: string, default: auto }
+        config: { type: object, additionalProperties: true }
+    MetricSummary:
+      type: object
+      properties:
+        macroF1: { type: [number, "null"], minimum: 0, maximum: 1 }
+        macroAuprc: { type: [number, "null"], minimum: 0, maximum: 1 }
+        eventF1: { type: [number, "null"], minimum: 0, maximum: 1 }
+        expectedCalibrationError: { type: [number, "null"], minimum: 0 }
+        perLabel:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: { type: number }
+    ModelVersion:
+      type: object
+      required: [id, providerId, baseModelId, snapshotId, state, metrics, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        parentModelVersionId: { type: [string, "null"], format: uuid }
+        providerId: { type: string }
+        baseModelId: { type: string }
+        snapshotId: { $ref: "#/components/schemas/UUID" }
+        state: { type: string, enum: [candidate, published, archived, rejected] }
+        metrics: { $ref: "#/components/schemas/MetricSummary" }
+        gateWarnings:
+          type: array
+          items: { type: string }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    PublishRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        acknowledgeWarnings:
+          type: array
+          items: { type: string }
+        note: { type: string, maxLength: 5000 }
+    AssistantProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, targetIds]
+      properties:
+        kind: { type: string, enum: [taxonomy-normalization, annotation-review, alignment-explanation] }
+        targetIds:
+          type: array
+          minItems: 1
+          items: { type: string }
+        providerId: { type: [string, "null"] }
+        userInstruction: { type: string, maxLength: 5000, default: "" }
+    ProposalApply:
+      type: object
+      additionalProperties: false
+      required: [operationIds]
+      properties:
+        operationIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string }
+        expectedTargetRevisions:
+          type: object
+          additionalProperties: { type: integer, minimum: 1 }
+    AuditEvent:
+      type: object
+      required: [id, actor, action, createdAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        actor: { type: string }
+        action: { type: string }
+        targetIds:
+          type: array
+          items: { type: string }
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+    JobState:
+      type: string
+      enum: [queued, running, cancel_requested, cancelled, succeeded, failed, interrupted]
+    JobAccepted:
+      type: object
+      required: [jobId, state]
+      properties:
+        jobId: { $ref: "#/components/schemas/UUID" }
+        state: { $ref: "#/components/schemas/JobState" }
+    Job:
+      type: object
+      required: [id, kind, state, phase, createdAt, updatedAt]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        projectId: { type: [string, "null"], format: uuid }
+        kind: { type: string, enum: [asset-import, score-import, alignment, feature-extraction, inference, detection-plan-compile, detection-preview, detection-run, prototype-rebuild, snapshot, training, assistant, export, model-load, model-probe] }
+        state: { $ref: "#/components/schemas/JobState" }
+        phase: { type: string }
+        progress: { type: [number, "null"], minimum: 0, maximum: 1 }
+        message: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
+        resumable: { type: boolean, default: false }
+        result: { type: [object, "null"], additionalProperties: true }
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/Problem"
+            - type: "null"
+        createdAt: { $ref: "#/components/schemas/Timestamp" }
+        updatedAt: { $ref: "#/components/schemas/Timestamp" }
+    EventEnvelope:
+      type: object
+      required: [id, type, occurredAt, data]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        projectId: { type: [string, "null"], format: uuid }
+        occurredAt: { $ref: "#/components/schemas/Timestamp" }
+        data: { type: object, additionalProperties: true }
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer, minimum: 100, maximum: 599 }
+        detail: { type: string }
+        instance: { type: string, format: uri-reference }
+        currentRevision: { type: [integer, "null"] }
+        currentResource: { type: [object, "null"], additionalProperties: true }

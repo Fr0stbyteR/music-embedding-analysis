@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.music-annotation/spec/detection-plan.schema.json",
+  "title": "DetectionPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "revision", "name", "status", "labels", "fusion", "policy"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "id": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "status": { "enum": ["draft", "validated", "retired"] },
+    "sourceInstruction": { "type": "string", "maxLength": 10000 },
+    "taxonomyVersion": { "type": ["string", "null"] },
+    "preferredLanguages": {
+      "type": "array",
+      "items": { "enum": ["zh", "en"] },
+      "uniqueItems": true,
+      "default": ["zh", "en"]
+    },
+    "labels": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/labelPlan" }
+    },
+    "featureExtractors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/featureExtractor" },
+      "default": []
+    },
+    "fusion": { "$ref": "#/$defs/fusion" },
+    "policy": { "$ref": "#/$defs/policy" },
+    "compiler": { "$ref": "#/$defs/compiler" }
+  },
+  "$defs": {
+    "labelPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["labelId", "displayName", "family", "granularity", "detectors", "window", "prompts", "thresholds"],
+      "properties": {
+        "labelId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "family": {
+          "enum": ["instrument", "technique", "voice", "pitch", "rhythm", "dynamics", "timbre", "harmony", "form", "affect", "production", "custom"]
+        },
+        "granularity": { "enum": ["clip", "segment", "frame", "event", "note"] },
+        "instrumentScope": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "detectors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode", "providerId", "weight"],
+            "properties": {
+              "mode": { "enum": ["zero-shot-text", "audio-prototype", "supervised-head", "descriptor-rule", "score-rule"] },
+              "providerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+              "modelVersionId": { "type": ["string", "null"] },
+              "prototypeSetId": { "type": ["string", "null"], "format": "uuid" },
+              "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+              "required": { "type": "boolean", "default": false }
+            }
+          }
+        },
+        "window": { "$ref": "#/$defs/window" },
+        "prompts": { "$ref": "#/$defs/prompts" },
+        "constraints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/predicate" },
+          "default": []
+        },
+        "thresholds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["review", "autoAccept", "abstainBelow"],
+          "properties": {
+            "review": { "type": "number", "minimum": 0, "maximum": 1 },
+            "autoAccept": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "abstainBelow": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contextSeconds", "hopSeconds", "minimumEventMs", "mergeGapMs"],
+      "properties": {
+        "contextSeconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 30 },
+        "hopSeconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 10 },
+        "minimumEventMs": { "type": "integer", "minimum": 10, "maximum": 30000 },
+        "maximumEventMs": { "type": ["integer", "null"], "minimum": 10 },
+        "mergeGapMs": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "smoothingFrames": { "type": "integer", "minimum": 0, "maximum": 100, "default": 1 }
+      }
+    },
+    "prompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["positive", "negative"],
+      "properties": {
+        "positive": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 32 },
+        "negative": { "type": "array", "items": { "type": "string", "maxLength": 500 }, "maxItems": 32 }
+      }
+    },
+    "predicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "field", "operator", "value", "effect"],
+      "properties": {
+        "source": { "enum": ["context", "descriptor", "score", "detector", "duration"] },
+        "field": { "type": "string", "pattern": "^[a-zA-Z0-9._-]+$" },
+        "operator": { "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "in", "not-in", "between"] },
+        "value": { "type": ["string", "number", "boolean", "array"] },
+        "effect": { "enum": ["require", "suppress", "boost", "reduce", "review"] }
+      }
+    },
+    "featureExtractor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "outputs"],
+      "properties": {
+        "providerId": { "type": "string" },
+        "outputs": { "type": "array", "minItems": 1, "items": { "type": "string" }, "uniqueItems": true },
+        "config": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+      }
+    },
+    "fusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method"],
+      "properties": {
+        "method": { "enum": ["calibrated-logistic", "calibrated-mlp", "rule-only"] },
+        "calibrationProfileId": { "type": ["string", "null"], "format": "uuid" },
+        "missingAnalyzerPolicy": { "enum": ["fail", "warn-and-continue", "abstain"], "default": "warn-and-continue" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultDecision", "protectConfirmed", "persistPreview"],
+      "properties": {
+        "defaultDecision": { "enum": ["review", "abstain"] },
+        "protectConfirmed": { "const": true },
+        "persistPreview": { "const": false },
+        "allowAutoAcceptLabels": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] },
+        "maximumSuggestionsPerMinute": { "type": "integer", "minimum": 1, "maximum": 10000, "default": 120 }
+      }
+    },
+    "compiler": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["deterministic", "llm"] },
+        "providerId": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "promptTemplateVersion": { "type": ["string", "null"] },
+        "compiledAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

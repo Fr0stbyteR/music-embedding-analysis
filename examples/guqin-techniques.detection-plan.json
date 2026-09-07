@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "1.0",
+  "id": "11111111-1111-4111-8111-111111111111",
+  "revision": 1,
+  "name": "古琴乐器、泛音与动态变化识别",
+  "status": "draft",
+  "sourceInstruction": "识别古琴出现的区间，优先寻找泛音技法，并标记明显的力度变化；宁可送审也不要误自动确认。",
+  "taxonomyVersion": "guqin-core/1",
+  "preferredLanguages": ["zh", "en"],
+  "labels": [
+    {
+      "labelId": "instrument.guqin",
+      "family": "instrument",
+      "granularity": "segment",
+      "detectors": [
+        { "mode": "zero-shot-text", "providerId": "laion-clap-music", "modelVersionId": null, "weight": 0.6, "required": true },
+        { "mode": "zero-shot-text", "providerId": "muq-mulan", "modelVersionId": null, "weight": 0.4, "required": false }
+      ],
+      "window": { "contextSeconds": 8, "hopSeconds": 2, "minimumEventMs": 500, "maximumEventMs": null, "mergeGapMs": 500, "smoothingFrames": 3 },
+      "prompts": {
+        "positive": ["古琴独奏的声音", "a solo Chinese guqin zither performance"],
+        "negative": ["古筝演奏", "琵琶演奏", "a piano performance"]
+      },
+      "constraints": [],
+      "thresholds": { "review": 0.55, "autoAccept": null, "abstainBelow": 0.35 }
+    },
+    {
+      "labelId": "guqin.technique.fanyin",
+      "family": "technique",
+      "granularity": "event",
+      "instrumentScope": ["instrument.guqin"],
+      "detectors": [
+        { "mode": "audio-prototype", "providerId": "m2d-clap", "prototypeSetId": "22222222-2222-4222-8222-222222222222", "weight": 0.7, "required": true },
+        { "mode": "zero-shot-text", "providerId": "laion-clap-music", "modelVersionId": null, "weight": 0.3, "required": false }
+      ],
+      "window": { "contextSeconds": 4, "hopSeconds": 0.25, "minimumEventMs": 80, "maximumEventMs": 5000, "mergeGapMs": 120, "smoothingFrames": 3 },
+      "prompts": {
+        "positive": ["古琴泛音，手指轻触弦后发出的清亮空灵音色", "a bright bell-like guqin harmonic produced by lightly touching the string"],
+        "negative": ["古琴散音", "古琴按音", "ordinary plucked guqin tone without harmonics"]
+      },
+      "constraints": [
+        { "source": "context", "field": "instrument.guqin.score", "operator": "gte", "value": 0.5, "effect": "review" }
+      ],
+      "thresholds": { "review": 0.62, "autoAccept": null, "abstainBelow": 0.42 }
+    },
+    {
+      "labelId": "feature.dynamics.change",
+      "family": "dynamics",
+      "granularity": "event",
+      "detectors": [
+        { "mode": "descriptor-rule", "providerId": "essentia", "modelVersionId": null, "weight": 1.0, "required": true }
+      ],
+      "window": { "contextSeconds": 2, "hopSeconds": 0.1, "minimumEventMs": 100, "maximumEventMs": 10000, "mergeGapMs": 250, "smoothingFrames": 5 },
+      "prompts": { "positive": [], "negative": [] },
+      "constraints": [
+        { "source": "descriptor", "field": "loudness.delta_db", "operator": "gte", "value": 4, "effect": "require" }
+      ],
+      "thresholds": { "review": 0.5, "autoAccept": null, "abstainBelow": 0.3 }
+    }
+  ],
+  "featureExtractors": [
+    {
+      "providerId": "essentia",
+      "outputs": ["loudness", "onset", "spectral_centroid", "pitch_contour"],
+      "config": { "sampleRate": 32000, "hopSize": 320 }
+    }
+  ],
+  "fusion": {
+    "method": "calibrated-logistic",
+    "calibrationProfileId": null,
+    "missingAnalyzerPolicy": "warn-and-continue"
+  },
+  "policy": {
+    "defaultDecision": "review",
+    "protectConfirmed": true,
+    "persistPreview": false,
+    "allowAutoAcceptLabels": [],
+    "maximumSuggestionsPerMinute": 90
+  },
+  "compiler": {
+    "kind": "deterministic",
+    "providerId": null,
+    "model": null,
+    "promptTemplateVersion": "detection-plan-compiler/1",
+    "compiledAt": "2026-09-07T00:00:00Z"
+  }
+}
