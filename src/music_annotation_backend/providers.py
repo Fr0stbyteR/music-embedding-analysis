@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import importlib.util
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -32,6 +33,8 @@ class Provider(ABC):
         self.state = "available" if self.installed() else "not_installed"
         self.device: str | None = None
         self.error: str | None = None
+        self._text_embedding_cache: dict[tuple[str, ...], Any] = {}
+        self._inference_lock = threading.RLock()
 
     def installed(self) -> bool:
         return self.package_name is None or importlib.util.find_spec(self.package_name) is not None
@@ -61,6 +64,7 @@ class Provider(ABC):
         self.model = None
         self.device = None
         self.state = "available" if self.installed() else "not_installed"
+        self._text_embedding_cache.clear()
         try:
             import torch
             if torch.cuda.is_available():
@@ -91,6 +95,14 @@ class Provider(ABC):
 
     def score_audio_text(self, waveforms: np.ndarray, texts: list[str]) -> np.ndarray:
         raise NotImplementedError(f"{self.display_name} does not support audio/text scoring")
+
+    def embed_audio_for_text(self, waveforms: np.ndarray) -> np.ndarray:
+        """Return normalized audio embeddings when the provider exposes them."""
+        raise NotImplementedError
+
+    def score_audio_embeddings_text(self, audio_embeddings: np.ndarray, texts: list[str]) -> np.ndarray:
+        """Score previously computed normalized audio embeddings against text."""
+        raise NotImplementedError
 
 
 class MockProvider(Provider):
@@ -213,14 +225,28 @@ class LaionClapProvider(Provider):
                 "audioShape": list(result.shape), "audioSeconds": audio_seconds,
                 "textShape": list(text.shape), "textSeconds": time.perf_counter() - started}
 
-    def score_audio_text(self, waveforms: np.ndarray, texts: list[str]) -> np.ndarray:
+    def embed_audio_for_text(self, waveforms: np.ndarray) -> np.ndarray:
         if self.model is None:
             raise RuntimeError("provider is not loaded")
-        audio = np.asarray(self.model.get_audio_embedding_from_data(x=waveforms, use_tensor=False), dtype=np.float32)
-        text = np.asarray(self.model.get_text_embedding(texts, use_tensor=False), dtype=np.float32)
+        with self._inference_lock:
+            audio = np.asarray(self.model.get_audio_embedding_from_data(x=waveforms, use_tensor=False), dtype=np.float32)
         audio /= np.maximum(np.linalg.norm(audio, axis=1, keepdims=True), 1e-8)
-        text /= np.maximum(np.linalg.norm(text, axis=1, keepdims=True), 1e-8)
-        return np.clip((audio @ text.T + 1) / 2, 0, 1)
+        return audio
+
+    def score_audio_embeddings_text(self, audio_embeddings: np.ndarray, texts: list[str]) -> np.ndarray:
+        if self.model is None:
+            raise RuntimeError("provider is not loaded")
+        key = tuple(texts)
+        with self._inference_lock:
+            text = self._text_embedding_cache.get(key)
+            if text is None:
+                text = np.asarray(self.model.get_text_embedding(texts, use_tensor=False), dtype=np.float32)
+                text /= np.maximum(np.linalg.norm(text, axis=1, keepdims=True), 1e-8)
+                self._text_embedding_cache[key] = text
+        return np.clip((audio_embeddings @ text.T + 1) / 2, 0, 1)
+
+    def score_audio_text(self, waveforms: np.ndarray, texts: list[str]) -> np.ndarray:
+        return self.score_audio_embeddings_text(self.embed_audio_for_text(waveforms), texts)
 
 
 class MuQMulanProvider(Provider):
@@ -258,16 +284,31 @@ class MuQMulanProvider(Provider):
                 "audioShape": list(audio.shape), "audioSeconds": audio_seconds,
                 "textShape": list(text.shape), "textSeconds": time.perf_counter() - started}
 
-    def score_audio_text(self, waveforms: np.ndarray, texts: list[str]) -> np.ndarray:
+    def embed_audio_for_text(self, waveforms: np.ndarray) -> np.ndarray:
         if self.model is None:
             raise RuntimeError("provider is not loaded")
         import torch
-        with torch.inference_mode():
-            audio = self.model(wavs=torch.from_numpy(waveforms).to(self.device))
-            text = self.model(texts=texts)
-            audio = torch.nn.functional.normalize(audio.float(), dim=-1)
-            text = torch.nn.functional.normalize(text.float(), dim=-1)
-            return ((audio @ text.T + 1) / 2).clamp(0, 1).cpu().numpy()
+        with self._inference_lock:
+            with torch.inference_mode():
+                audio = self.model(wavs=torch.from_numpy(waveforms).to(self.device))
+                audio = torch.nn.functional.normalize(audio.float(), dim=-1)
+                return audio.cpu().numpy()
+
+    def score_audio_embeddings_text(self, audio_embeddings: np.ndarray, texts: list[str]) -> np.ndarray:
+        if self.model is None:
+            raise RuntimeError("provider is not loaded")
+        import torch
+        key = tuple(texts)
+        with self._inference_lock:
+            text = self._text_embedding_cache.get(key)
+            if text is None:
+                with torch.inference_mode():
+                    text = torch.nn.functional.normalize(self.model(texts=texts).float(), dim=-1).cpu().numpy()
+                self._text_embedding_cache[key] = text
+        return np.clip((audio_embeddings @ text.T + 1) / 2, 0, 1)
+
+    def score_audio_text(self, waveforms: np.ndarray, texts: list[str]) -> np.ndarray:
+        return self.score_audio_embeddings_text(self.embed_audio_for_text(waveforms), texts)
 
 
 class ProviderRegistry:

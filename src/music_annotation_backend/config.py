@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MAB_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="MAB_", env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     data_root: Path = Field(default=Path(".music-annotation-data"))
     model_root: Path = Field(default=Path("models"))
@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 49321
     session_token: str | None = None
+    auto_load_provider: str | None = None
+    auto_load_device: str = "auto"
+    auto_load_checkpoint_path: str | None = None
+    auto_load_allow_download: bool = False
+    cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+    maximum_upload_bytes: int = 2 * 1024 * 1024 * 1024
     log_level: str = "info"
 
     def prepare(self) -> None:

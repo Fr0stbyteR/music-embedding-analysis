@@ -39,6 +39,18 @@ session token, proxies requests, and terminates it with the editor session.
 
 ## Run the service
 
+For normal local use, copy `.env.example` to `.env` once and then run a single
+command. The configured LAION-CLAP provider loads automatically during startup:
+
+```powershell
+.\start-clap.ps1
+```
+
+Change `MAB_AUTO_LOAD_PROVIDER`, device, token, ports, or model paths in `.env`.
+There is no separate provider-load HTTP request in this startup mode.
+
+For initial environment setup only:
+
 ```powershell
 uv venv --python 3.11 .venv
 uv pip install --python .venv\Scripts\python.exe -e ".[dev]"
@@ -56,6 +68,31 @@ POST /v1/providers/{providerId}:load
 POST /v1/providers/{providerId}:probe
 GET  /v1/jobs/{jobId}
 ```
+
+Browser clients can use the lightweight interactive path without creating a
+project or detection plan:
+
+```text
+POST /v1/interactive-assets
+POST /v1/interactive-assets/{assetId}:describe
+POST /v1/interactive-assets/{assetId}:librosa
+```
+
+The upload body is the raw audio file and `X-File-Name` contains its
+URL-encoded name. `:describe` accepts `startSeconds`, `endSeconds`, an optional
+`providerId`, and `maximumResults`. It ranks the built-in bilingual instrument,
+voice, technique, texture, affect, production, and rhythm prompts using a
+loaded text-capable provider. Returned values are cosine-derived similarities,
+not calibrated probabilities. Uploaded bytes are content-addressed under the
+data root; configure browser origins with `MAB_CORS_ORIGIN_REGEX`.
+
+The uploaded asset can also be analyzed with the migrated Audio Toolkit librosa
+algorithms. `:librosa` accepts `algorithm`, `options`, and `cachePolicy` (`use`
+or `refresh`), returning vector, matrix, or marker data with cache metadata.
+The cache key includes the full audio hash, analysis options, and an engine
+fingerprint exposed by `/v1/health` as `librosaEngineVersion`. Browser and
+VS Code desktop clients use this single service; the desktop client requests
+confirmation before uploading a full audio file.
 
 ## V0.2 analysis workflow
 

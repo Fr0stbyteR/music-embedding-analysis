@@ -15,6 +15,7 @@ class Health(ApiModel):
     status: Literal["ok"] = "ok"
     protocol_version: str = "music-annotation/1"
     service_version: str
+    librosa_engine_version: str | None = None
 
 
 class ProviderCapability(ApiModel):
@@ -38,6 +39,93 @@ class Capabilities(ApiModel):
     providers: list[ProviderCapability]
     score_formats: list[str] = ["musicxml", "midi", "pdf", "image"]
     training_modes: list[str] = ["prototype", "head", "partial-backbone", "contrastive-adapter"]
+
+
+class InteractiveDescribeRequest(ApiModel):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
+    timeline_duration_seconds: float | None = Field(default=None, gt=0)
+    maximum_results: int = Field(default=8, ge=1, le=20)
+    provider_id: str | None = None
+
+    @model_validator(mode="after")
+    def valid_range(self) -> "InteractiveDescribeRequest":
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError("endSeconds must be greater than startSeconds")
+        return self
+
+
+class SemanticDescription(ApiModel):
+    label_id: str
+    text: str
+    family: str
+    score: float = Field(ge=0, le=1)
+
+
+class RawSemanticMatch(ApiModel):
+    prompt: str
+    label_id: str
+    family: str
+    score: float = Field(ge=0, le=1)
+    cosine_similarity: float = Field(ge=-1, le=1)
+
+
+class InteractiveDescriptionResult(ApiModel):
+    asset_id: UUID
+    start_seconds: float
+    end_seconds: float
+    provider_id: str
+    provider_name: str
+    summary: str
+    descriptions: list[SemanticDescription]
+    raw_matches: list[RawSemanticMatch]
+    score_kind: Literal["cosine-similarity-not-probability"] = "cosine-similarity-not-probability"
+    cached: bool = False
+
+
+class SemanticCurveRequest(ApiModel):
+    keyword: str = Field(min_length=1, max_length=300)
+    prompts: list[str] = Field(default_factory=list, max_length=16)
+    timeline_duration_seconds: float | None = Field(default=None, gt=0)
+    window_seconds: float = Field(default=5.0, ge=1.0, le=30.0)
+    hop_seconds: float = Field(default=0.5, ge=0.1, le=10.0)
+    aggregation: Literal["mean", "max"] = "mean"
+    provider_id: str | None = None
+    cache_policy: Literal["use", "refresh"] = "use"
+
+    @model_validator(mode="after")
+    def valid_prompts(self) -> "SemanticCurveRequest":
+        self.keyword = self.keyword.strip()
+        self.prompts = list(dict.fromkeys(prompt.strip() for prompt in self.prompts if prompt.strip()))
+        if not self.keyword:
+            raise ValueError("keyword must not be blank")
+        return self
+
+
+class SemanticCurvePoint(ApiModel):
+    time_seconds: float = Field(ge=0)
+    score: float = Field(ge=0, le=1)
+    cosine_similarity: float = Field(ge=-1, le=1)
+
+
+class SemanticCurveResult(ApiModel):
+    asset_id: UUID
+    keyword: str
+    prompts: list[str]
+    provider_id: str
+    provider_name: str
+    window_seconds: float
+    hop_seconds: float
+    aggregation: Literal["mean", "max"]
+    points: list[SemanticCurvePoint]
+    score_kind: Literal["cosine-similarity-not-probability"] = "cosine-similarity-not-probability"
+    cached: bool = False
+
+
+class InteractiveLibrosaRequest(ApiModel):
+    algorithm: str = Field(min_length=1, max_length=80)
+    options: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    cache_policy: Literal["use", "refresh"] = "use"
 
 
 class ProjectCreate(ApiModel):

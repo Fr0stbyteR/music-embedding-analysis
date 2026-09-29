@@ -2,25 +2,32 @@ from __future__ import annotations
 
 import json
 import asyncio
+import hashlib
 from collections import Counter
 from datetime import datetime, timezone
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from uuid import UUID
+from pathlib import Path
+from urllib.parse import unquote
+from uuid import NAMESPACE_URL, UUID, uuid5
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from . import __version__
 from .analysis import analyze_range, inspect_asset
 from .config import Settings
 from .jobs import JobManager
+from .interactive import describe_asset, relevance_curve
+from .librosa_api import analyze_interactive_asset, engine_version
 from .providers import ProviderRegistry
 from .schemas import (
     Annotation, AnnotationCreate, AnnotationPatch, Asset, AssetImport, Capabilities,
     DetectionCandidate, DetectionPlan, DetectionPlanCompileRequest, DetectionPlanRunRequest,
     DetectionPlanValidation, DetectionRun, Health, Job, JobAccepted, Project,
-    ProjectCreate, ProviderCapability, ProviderLoadRequest,
+    InteractiveDescribeRequest, InteractiveDescriptionResult, InteractiveLibrosaRequest, ProjectCreate, SemanticCurveRequest, SemanticCurveResult,
+    ProviderCapability, ProviderLoadRequest,
 )
 from .planner import compile_plan, validate_plan
 from .store import ConflictError, NotFoundError, ProjectStore
@@ -33,12 +40,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        if cfg.auto_load_provider:
+            try:
+                provider = providers.get(cfg.auto_load_provider)
+            except KeyError as exc:
+                raise RuntimeError(f"Cannot auto-load unknown provider {cfg.auto_load_provider}") from exc
+            await provider.load(cfg.auto_load_device, cfg.auto_load_checkpoint_path, cfg.auto_load_allow_download)
         yield
         for provider in providers.providers.values():
             provider.unload()
 
     app = FastAPI(title="Local Music Annotation Service", version=__version__, lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=cfg.cors_origin_regex,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-File-Name"],
+    )
     app.state.settings, app.state.store, app.state.jobs, app.state.providers = cfg, store, jobs, providers
+    app.state.interactive_assets = {}
 
     def authorize(authorization: str | None = Header(default=None)) -> None:
         if cfg.session_token is None:
@@ -50,7 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/health", response_model=Health)
     def health() -> Health:
-        return Health(service_version=__version__)
+        return Health(service_version=__version__, librosa_engine_version=engine_version())
 
     @app.get("/v1/capabilities", response_model=Capabilities, dependencies=protected)
     def capabilities() -> Capabilities:
@@ -62,6 +83,83 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ImportError:
             pass
         return Capabilities(devices=devices, providers=providers.capabilities())
+
+    @app.post("/v1/interactive-assets", response_model=Asset, status_code=201, dependencies=protected)
+    async def upload_interactive_asset(request: Request, x_file_name: str | None = Header(default=None)) -> Asset:
+        upload_root = cfg.data_root / "interactive-assets"
+        upload_root.mkdir(parents=True, exist_ok=True)
+        temporary = upload_root / f"upload-{__import__('uuid').uuid4().hex}.tmp"
+        digest, size = hashlib.sha256(), 0
+        try:
+            with temporary.open("wb") as stream:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > cfg.maximum_upload_bytes:
+                        raise HTTPException(status_code=413, detail="audio upload exceeds the configured size limit")
+                    digest.update(chunk)
+                    stream.write(chunk)
+            if size == 0:
+                raise HTTPException(status_code=422, detail="audio upload is empty")
+            original_name = Path(unquote(x_file_name or "audio")).name
+            suffix = Path(original_name).suffix.lower()
+            if not suffix or len(suffix) > 12:
+                suffix = ".audio"
+            content_hash = digest.hexdigest()
+            destination = upload_root / f"{content_hash}{suffix}"
+            if destination.exists():
+                temporary.unlink()
+            else:
+                temporary.replace(destination)
+            asset = inspect_asset(str(destination), original_name)
+            asset = asset.model_copy(update={"id": uuid5(NAMESPACE_URL, f"interactive:{content_hash}")})
+            app.state.interactive_assets[asset.id] = asset
+            return asset
+        except HTTPException:
+            if temporary.exists():
+                temporary.unlink()
+            raise
+        except Exception as exc:
+            if temporary.exists():
+                temporary.unlink()
+            raise HTTPException(status_code=422, detail=f"could not decode audio: {exc}") from exc
+
+    @app.post("/v1/interactive-assets/{asset_id}:describe", response_model=InteractiveDescriptionResult, dependencies=protected)
+    async def describe_interactive_asset(asset_id: UUID, value: InteractiveDescribeRequest) -> InteractiveDescriptionResult:
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        try:
+            return await asyncio.to_thread(describe_asset, asset, value, providers)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/interactive-assets/{asset_id}:relevance-curve", response_model=SemanticCurveResult, dependencies=protected)
+    async def interactive_relevance_curve(asset_id: UUID, value: SemanticCurveRequest) -> SemanticCurveResult:
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        try:
+            return await asyncio.to_thread(relevance_curve, asset, value, providers, cfg.data_root / "relevance-cache")
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/v1/interactive-assets/{asset_id}:librosa", dependencies=protected)
+    async def interactive_librosa(asset_id: UUID, value: InteractiveLibrosaRequest) -> dict:
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        try:
+            return await asyncio.to_thread(analyze_interactive_asset, asset, value, cfg.data_root / "librosa-cache")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/v1/providers/{provider_id}:load", response_model=JobAccepted, status_code=202, dependencies=protected)
     async def load_provider(provider_id: str, request: ProviderLoadRequest) -> JobAccepted:

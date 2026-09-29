@@ -11,7 +11,7 @@ from music_annotation_backend.config import Settings
 
 
 def client(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(Settings(data_root=tmp_path / "data", model_root=tmp_path / "models", vendor_root=tmp_path / "vendor", session_token="test")), headers={"Authorization": "Bearer test"})
+    return TestClient(create_app(Settings(data_root=tmp_path / "data", model_root=tmp_path / "models", vendor_root=tmp_path / "vendor", session_token="test", auto_load_provider="")), headers={"Authorization": "Bearer test"})
 
 
 def wait_for_job(api: TestClient, job_id: str, timeout: float = 120) -> dict:
@@ -26,7 +26,7 @@ def wait_for_job(api: TestClient, job_id: str, timeout: float = 120) -> dict:
 
 
 def test_health_does_not_require_auth(tmp_path: Path) -> None:
-    app = create_app(Settings(data_root=tmp_path / "data", model_root=tmp_path / "models", vendor_root=tmp_path / "vendor", session_token="secret"))
+    app = create_app(Settings(data_root=tmp_path / "data", model_root=tmp_path / "models", vendor_root=tmp_path / "vendor", session_token="secret", auto_load_provider=""))
     with TestClient(app) as api:
         response = api.get("/v1/health")
         assert response.status_code == 200
@@ -82,6 +82,17 @@ def test_mock_provider_load_job(tmp_path: Path) -> None:
             time.sleep(0.01)
         assert job["state"] == "succeeded"
         assert job["result"]["audioShape"] == [1, 32]
+
+
+def test_provider_can_auto_load_from_settings(tmp_path: Path) -> None:
+    settings = Settings(
+        data_root=tmp_path / "data", model_root=tmp_path / "models", vendor_root=tmp_path / "vendor",
+        session_token="test", auto_load_provider="mock", auto_load_device="cpu",
+    )
+    with TestClient(create_app(settings), headers={"Authorization": "Bearer test"}) as api:
+        providers = api.get("/v1/capabilities").json()["providers"]
+        mock = next(provider for provider in providers if provider["providerId"] == "mock")
+        assert mock["loaded"] is True
 
 
 def test_musicology_request_compiles_to_safe_multifamily_plan(tmp_path: Path) -> None:
@@ -189,3 +200,67 @@ def test_loaded_text_provider_returns_reviewable_instrument_and_technique_eviden
         candidates = api.get(f"/v1/projects/{project['id']}/detection-runs/{preview_job['result']['id']}/candidates").json()
         assert {candidate["labelId"] for candidate in candidates} == {"instrument.guqin", "technique.harmonic"}
         assert all(candidate["evidence"]["scoreKind"] == "prompt-margin-not-calibrated" for candidate in candidates)
+
+
+def test_interactive_upload_and_description(tmp_path: Path) -> None:
+    sample_rate = 16000
+    audio_path = tmp_path / "cursor.wav"
+    sf.write(audio_path, 0.1 * np.sin(2 * np.pi * 440 * np.arange(sample_rate * 22) / sample_rate), sample_rate)
+    with client(tmp_path) as api:
+        load = wait_for_job(api, api.post("/v1/providers/mock:load", json={"device": "cpu"}).json()["jobId"])
+        assert load["state"] == "succeeded"
+        uploaded = api.post(
+            "/v1/interactive-assets",
+            content=audio_path.read_bytes(),
+            headers={"Content-Type": "audio/wav", "X-File-Name": "cursor.wav"},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        asset = uploaded.json()
+        response = api.post(
+            f"/v1/interactive-assets/{asset['id']}:describe",
+            json={"startSeconds": 0.25, "endSeconds": 1.25, "maximumResults": 5, "providerId": "mock"},
+        )
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result["providerId"] == "mock"
+        assert result["scoreKind"] == "cosine-similarity-not-probability"
+        assert len(result["descriptions"]) == 5
+        assert len(result["rawMatches"]) > len(result["descriptions"])
+        assert {"prompt", "labelId", "family", "score", "cosineSimilarity"} <= result["rawMatches"][0].keys()
+        assert result["summary"]
+        assert result["startSeconds"] == 0.25
+
+        whole = api.post(
+            f"/v1/interactive-assets/{asset['id']}:describe",
+            json={"startSeconds": 0, "endSeconds": 22, "maximumResults": 3, "providerId": "mock"},
+        )
+        assert whole.status_code == 200, whole.text
+        assert len(whole.json()["descriptions"]) == 3
+
+        # Browser decoders may expose MP3 padding and report a longer timeline
+        # than soundfile. A cursor near that timeline's end must map to the asset.
+        padded_timeline = api.post(
+            f"/v1/interactive-assets/{asset['id']}:describe",
+            json={
+                "startSeconds": 23, "endSeconds": 24, "timelineDurationSeconds": 24,
+                "maximumResults": 3, "providerId": "mock",
+            },
+        )
+        assert padded_timeline.status_code == 200, padded_timeline.text
+        assert padded_timeline.json()["endSeconds"] == 22
+
+        curve_request = {
+            "keyword": "piano", "prompts": ["piano", "solo piano performance"],
+            "timelineDurationSeconds": 24, "windowSeconds": 5, "hopSeconds": 1,
+            "aggregation": "mean", "providerId": "mock",
+        }
+        curve = api.post(f"/v1/interactive-assets/{asset['id']}:relevance-curve", json=curve_request)
+        assert curve.status_code == 200, curve.text
+        curve_result = curve.json()
+        assert len(curve_result["points"]) == 18
+        assert curve_result["points"][0]["timeSeconds"] > 0
+        assert curve_result["points"][-1]["timeSeconds"] <= 24
+        assert curve_result["cached"] is False
+        cached_curve = api.post(f"/v1/interactive-assets/{asset['id']}:relevance-curve", json=curve_request)
+        assert cached_curve.status_code == 200
+        assert cached_curve.json()["cached"] is True
