@@ -7,3 +7,12 @@ __pycache__/
 .music-annotation-data/
 models/
 vendor/
+.uv-cache/
+.tools/
+.DS_Store
+._*
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/

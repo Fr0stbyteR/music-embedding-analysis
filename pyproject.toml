@@ -2,6 +2,8 @@
 name = "music-annotation-backend"
 version = "0.2.0"
 description = "Local human-in-the-loop music annotation sidecar"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "fastapi>=0.115,<1",
@@ -17,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "pytest-asyncio>=0.25,<1"]
 m2d = ["torch>=2.2", "torchaudio>=2.2", "timm>=1,<2", "nnAudio>=0.3,<1", "einops>=0.8,<1"]
-laion = ["laion-clap>=1.1.7", "transformers>=4.40,<5"]
+laion = ["laion-clap>=1.1.7", "torch>=2.2", "torchaudio>=2.2", "transformers>=4.40,<5"]
 # muq 0.1.0 has no upstream upper bound, but its EasyDict-based Conformer
 # configuration is incompatible with the Transformers 5 masking API.
 muq = ["muq>=0.1.0", "transformers>=4.40,<5"]
@@ -35,3 +37,14 @@ packages = ["src/music_annotation_backend"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.uv]
+# Keep a matched CPU stack with wheels for both Intel and Apple Silicon Macs.
+# PyTorch 2.3+ no longer publishes macOS x86_64 wheels.
+constraint-dependencies = [
+  "torch==2.2.2; sys_platform == 'darwin'",
+  "torchaudio==2.2.2; sys_platform == 'darwin'",
+  "torchvision==0.17.2; sys_platform == 'darwin'",
+  "numpy<2; sys_platform == 'darwin'",
+  "transformers>=4.40,<4.46; sys_platform == 'darwin'",
+]

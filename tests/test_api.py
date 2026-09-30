@@ -33,6 +33,17 @@ def test_health_does_not_require_auth(tmp_path: Path) -> None:
         assert response.json()["protocolVersion"] == "music-annotation/1"
 
 
+def test_swagger_bearer_authorization_and_protected_api(tmp_path: Path) -> None:
+    with client(tmp_path) as api:
+        schema = api.get("/openapi.json").json()
+        assert schema["components"]["securitySchemes"]["HTTPBearer"]["scheme"] == "bearer"
+        assert schema["paths"]["/v1/capabilities"]["get"]["security"] == [{"HTTPBearer": []}]
+        assert "security" not in schema["paths"]["/v1/health"]["get"]
+        assert api.get("/v1/capabilities", headers={"Authorization": ""}).status_code == 401
+        assert api.get("/v1/capabilities", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert api.get("/v1/capabilities").status_code == 200
+
+
 def test_annotation_round_trip_and_conflict(tmp_path: Path) -> None:
     with client(tmp_path) as api:
         project = api.post("/v1/projects", json={"name": "Guqin", "directory": str(tmp_path)}).json()

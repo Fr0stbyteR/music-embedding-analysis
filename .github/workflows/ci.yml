@@ -1,0 +1,71 @@
+name: Tests
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked --python 3.11 --extra dev
+      - run: uv run --no-sync pytest
+      - name: Windows launcher smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $backend = Start-Process -FilePath cmd.exe -ArgumentList '/c start.cmd --basic' -WindowStyle Hidden -PassThru -RedirectStandardOutput startup.log -RedirectStandardError startup-error.log
+          try {
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 90; $attempt++) {
+              try {
+                $health = Invoke-RestMethod -Uri http://127.0.0.1:49321/v1/health -TimeoutSec 1
+                if ($health.protocolVersion -eq 'music-annotation/1') {
+                  $ready = $true
+                  break
+                }
+              } catch {}
+              if ($backend.HasExited) { break }
+              Start-Sleep -Seconds 1
+            }
+            if (-not $ready) {
+              Get-Content startup.log, startup-error.log
+              throw 'Windows launcher failed to start the service.'
+            }
+          } finally {
+            taskkill /PID $backend.Id /T /F | Out-Null
+            $global:LASTEXITCODE = 0
+          }
+      - name: macOS launcher smoke test
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          bash -n start.command
+          bash start.command --basic > startup.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in {1..90}; do
+            if curl -fsS http://127.0.0.1:49321/v1/health; then
+              exit 0
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat startup.log
+              exit 1
+            fi
+            sleep 1
+          done
+          cat startup.log
+          exit 1
+      - name: macOS CLAP dependency check
+        if: runner.os == 'macOS'
+        run: |
+          uv sync --locked --python 3.11 --extra laion
+          uv run --no-sync python -c "import torch, torchaudio, laion_clap; print(torch.__version__, torchaudio.__version__)"

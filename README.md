@@ -1,76 +1,94 @@
-# Music Annotation Backend Design
+# Music Embedding Analysis
 
-This repository contains the backend and design contract for a local,
-human-in-the-loop music annotation system. The intended client is the existing
-VS Code audio editor, but the protocol is deliberately UI-agnostic so the same
-backend can later serve a standalone desktop application.
+本地音乐分析与人工标注后端，基于 FastAPI、librosa 和可选的音频／文本嵌入模型。提供音高、节拍、和声、音色、结构分析，以及 CLAP / MuQ 语义检索、异步任务和人工审核标注。
 
-## Documents
+当前版本 **0.2.0**，仓库包含后端服务与客户端接入协议。独立图形界面和 VS Code 音频编辑器不在本仓库内；启动后可使用浏览器 API 文档，或接入已有客户端。模型相似度不是概率，检测结果默认是建议，需人工审核。
 
-- `docs/backend-architecture.md` — responsibilities, processes, storage, jobs,
-  safety, and the end-to-end annotation loop.
-- `docs/model-selection.md` — model choice and the staged fine-tuning policy.
-- `docs/v1-detection-orchestration.md` — next-version LLM-controlled detection
-  plans, model routing, evidence, and acceptance policy.
-- `spec/openapi.yaml` — local service HTTP API, including asynchronous jobs and
-  the event stream.
-- `spec/project.schema.json` — portable project manifest.
-- `spec/model-provider.md` — Python interface required from every embedding or
-  annotation model adapter.
-- `spec/detection-plan.schema.json` — safe, declarative contract produced by a
-  deterministic compiler or an LLM.
-- `spec/frontend-messages.ts` — typed Webview/extension-host request, response,
-  progress, event, and cancellation envelopes.
-- `docs/frontend-bridge.md` — security boundary and UI integration rules.
+## 一键启动（Windows / macOS）
 
-## Proposed default
+下载或克隆仓库，解压到一个可写的目录。**首次运行需要联网**，无需预先安装 Python、uv、Homebrew 或模型。
 
-- Python 3.11
-- FastAPI + Pydantic v2
-- SQLite for authoritative metadata and audit history
-- NumPy/Zarr-compatible binary feature storage outside SQLite
-- M2D-CLAP 2025 temporal checkpoint as the default audio backbone
-- Frozen-backbone linear/MLP temporal head for fast interactive iteration
-- Optional partial fine-tuning only after a validation gate passes
+Windows 双击根目录的 **`start.cmd`**；macOS 双击 **`start.command`**。两个入口统一命名为 `start`，Windows 的 PowerShell 实现是 `start.ps1`。脚本会：
 
-The browser Webview never talks to the Python process directly. The VS Code
-extension launches the sidecar on `127.0.0.1` with an ephemeral port and random
-session token, proxies requests, and terminates it with the editor session.
+1. 使用现有 uv，或从官方来源安装到项目的 `.tools/uv`（不需要管理员密码，也不修改 shell 配置）。
+2. 自动准备 Python 3.11、`.venv` 和锁定版本的依赖。
+3. 首次从 `.env.example` 创建 `.env`；已有配置不会被覆盖。
+4. 安装所选模型依赖，并自动下载默认 LAION-CLAP 音乐模型和文本编码器。
+5. 在本机启动服务，终端显示访问地址和会话令牌。
 
-## Run the service
+首次下载包含数 GB 的模型／依赖，请预留空间并等待终端出现 `Application startup complete`。后续启动复用环境和缓存。macOS 默认使用 CPU；Apple Silicon 和 Intel 的模型依赖使用兼容版本，不自动启用 MPS。
 
-For normal local use, copy `.env.example` to `.env` once and then run a single
-command. The configured LAION-CLAP provider loads automatically during startup:
+如果 ZIP 解压后双击提示权限不足，在项目目录打开终端，执行一次：
+
+```bash
+chmod +x start.command
+./start.command
+```
+
+也可以始终使用以下命令，无需可执行权限：
+
+```bash
+bash start.command
+```
+
+只使用 librosa 分析，不安装／加载嵌入模型：Windows 在 PowerShell 中执行 `./start.cmd --basic`，macOS 执行：
+
+```bash
+bash start.command --basic
+```
+
+基础模式首次仍需联网安装 Python 和基础依赖，但不下载模型，也不会修改 `.env`。不提供真实的语义识别结果。
+
+服务就绪后打开 <http://127.0.0.1:49321/docs>。先展开 `GET /v1/health`，点击 **Try it out → Execute**；返回 200 表示服务已启动。其余 API 需点击 **Authorize**，填入终端 JSON 中的 `token`（只填令牌，不加 `Bearer`）。默认每次启动生成新令牌。停止服务按 **Ctrl+C**。
+
+## 开发环境
+
+普通用户使用上面的一键入口即可。需要手动管理环境的开发者，安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后在项目目录中运行：
 
 ```powershell
-.\start-clap.ps1
+uv sync --locked --python 3.11
+uv run --no-sync python scripts/launch.py
 ```
 
-Change `MAB_AUTO_LOAD_PROVIDER`, device, token, ports, or model paths in `.env`.
-There is no separate provider-load HTTP request in this startup mode.
+基础模式追加 `--basic`。Windows 也可直接执行 `powershell -NoProfile -ExecutionPolicy Bypass -File ./start.ps1`，基础模式追加 `-Basic`。执行策略设置仅对当前进程生效，不修改系统策略。原 `start-clap.ps1` 已统一替换为 `start.ps1`。
 
-For initial environment setup only:
+开发与测试：
 
-```powershell
-uv venv --python 3.11 .venv
-uv pip install --python .venv\Scripts\python.exe -e ".[dev]"
-.venv\Scripts\music-annotation-backend.exe
+```bash
+uv sync --locked --python 3.11 --extra dev
+uv run --no-sync pytest
 ```
 
-The first stdout line is the extension-host handshake containing the local port
-and random bearer token. Interactive API documentation is available at
-`http://127.0.0.1:49321/docs` while the service is running.
+`uv.lock` 已纳入版本控制；更新依赖后运行 `uv lock` 并一并提交。CI 在 Windows 和 macOS 上测试基础 API 与启动流程，并检查 macOS CLAP 依赖导入。
 
-Model load and probe are asynchronous:
+## 配置与模型
 
-```text
-POST /v1/providers/{providerId}:load
-POST /v1/providers/{providerId}:probe
-GET  /v1/jobs/{jobId}
-```
+环境变量优先于 `.env`。修改 `.env` 后重启服务。
 
-Browser clients can use the lightweight interactive path without creating a
-project or detection plan:
+| 配置 | 用途 |
+| --- | --- |
+| `MAB_PORT` | 默认 `49321`，端口被占用时改为其他可用端口 |
+| `MAB_SESSION_TOKEN` | 可选固定令牌；不设置则启动时随机生成 |
+| `MAB_DATA_ROOT` | 默认 `.music-annotation-data`，保存本地音频、缓存和数据库 |
+| `MAB_AUTO_LOAD_PROVIDER` | 默认 `laion_clap_music_htsat_base`；留空只启用基础分析 |
+| `MAB_AUTO_LOAD_DEVICE` | 默认 `auto`，有 CUDA 时使用 CUDA，否则 CPU |
+| `MAB_AUTO_LOAD_ALLOW_DOWNLOAD` | 首次默认 `true`；缓存完整后可设为 `false` |
+| `MAB_AUTO_LOAD_CHECKPOINT_PATH` | 可选的本地模型路径 |
+| `MAB_HUGGINGFACE_CACHE` | 可选的专用 Hugging Face 缓存目录 |
+| `MAB_CORS_ORIGIN_REGEX` | 允许的浏览器来源，默认 localhost / 127.0.0.1 |
+
+| 模式 | 配置值 | 准备方式 |
+| --- | --- | --- |
+| LAION-CLAP 音乐语义相似度 | `laion_clap_music_htsat_base` | 默认，一键安装和下载 |
+| MuQ-MuLan 中英文语义相似度 | `muq_mulan_large` | 启动器自动安装 `muq` extra；允许下载或提供本地路径 |
+| M2D 时序嵌入 | `m2d_clap_2025` | 启动器安装 `m2d` extra；需另行准备 vendor 源码和 checkpoint，见模型文档 |
+| librosa 基础分析 | 空值 | 无需模型权重 |
+
+离线使用模型需要同时缓存权重和嵌套文本编码器。首次先允许下载，成功启动后再改为 `false`。保持该设置时，启动器会开启 Hugging Face 离线模式。安装依赖仍可能联网；完全断网时需提前准备所有依赖。
+
+## API 使用流程
+
+交互分析无需先建项目：
 
 ```text
 POST /v1/interactive-assets
@@ -78,54 +96,29 @@ POST /v1/interactive-assets/{assetId}:describe
 POST /v1/interactive-assets/{assetId}:librosa
 ```
 
-The upload body is the raw audio file and `X-File-Name` contains its
-URL-encoded name. `:describe` accepts `startSeconds`, `endSeconds`, an optional
-`providerId`, and `maximumResults`. It ranks the built-in bilingual instrument,
-voice, technique, texture, affect, production, and rhythm prompts using a
-loaded text-capable provider. Returned values are cosine-derived similarities,
-not calibrated probabilities. Uploaded bytes are content-addressed under the
-data root; configure browser origins with `MAB_CORS_ORIGIN_REGEX`.
+上传请求体为原始音频字节，`X-File-Name` 是 URL 编码的文件名。`:describe` 接受 `startSeconds`、`endSeconds`、可选 `providerId` 和 `maximumResults`；`:librosa` 接受 `algorithm`、`options` 和 `cachePolicy`（`use` / `refresh`）。完整请求字段见 `/docs`。
 
-The uploaded asset can also be analyzed with the migrated Audio Toolkit librosa
-algorithms. `:librosa` accepts `algorithm`, `options`, and `cachePolicy` (`use`
-or `refresh`), returning vector, matrix, or marker data with cache metadata.
-The cache key includes the full audio hash, analysis options, and an engine
-fingerprint exposed by `/v1/health` as `librosaEngineVersion`. Browser and
-VS Code desktop clients use this single service; the desktop client requests
-confirmation before uploading a full audio file.
+项目标注流程：注册可信音频路径 → 编译检测计划 → 验证计划 → 小范围预览 → 运行 → 人工确认。预览保存证据但不创建标注；运行结果以 `suggested` / `model` 保存，不覆盖人工确认结果。模型加载、探测和检测任务通过 `/v1/jobs/{jobId}` 查询进度。
 
-## V0.2 analysis workflow
+## 文档与目录
 
-V0.2 adds the first complete demand-driven annotation loop:
+- [后端架构](docs/backend-architecture.md)：存储、异步任务与标注循环。
+- [模型选择](docs/model-selection.md)与[已有模型测试](docs/model-smoke-test.md)：模型能力、限制与本地 CPU 测量。
+- [检测编排](docs/v1-detection-orchestration.md)：检测计划、路由、证据与审核策略。
+- [客户端接入](docs/frontend-bridge.md)：Webview / 扩展宿主边界。
+- `src/music_annotation_backend/`：服务实现；`tests/`：测试。
+- `spec/`：OpenAPI、项目／检测计划 schema、消息类型与模型适配接口。
+- `examples/`：检测计划样例；`scripts/`：环境与模型启动辅助。
+- [贡献指南](CONTRIBUTING.md)与[发布检查](docs/releasing.md)。
 
-1. Register a trusted audio path with `POST /v1/projects/{projectId}/assets`.
-2. Compile a request such as “标注古琴泛音和滑音，并分析音高、和声和曲式”
-   with `POST /v1/projects/{projectId}/detection-plans:compile`.
-3. Inspect the returned plan and call `:validate`. Every detector, time scale,
-   prompt ensemble, threshold, and fallback is explicit and versioned.
-4. Use `:preview` on selected ranges. Preview stores evidence candidates but
-   never creates annotations.
-5. Use `:run` after reviewing the plan. Results are persisted only as
-   `suggested` / `model` annotations and never overwrite confirmed human work.
+## 常见问题
 
-Measured analyzers currently cover note-level pitch, global key and local chord
-templates, beats/tempo, dynamics changes, timbre changes, and structural
-sections. These outputs carry `heuristic-not-calibrated` provenance. Instrument,
-voice, playing-technique, affect, and production labels use prompt ensembles
-through a loaded MuQ-MuLan or LAION-CLAP provider; if no compatible provider is
-loaded, those labels abstain with a warning. The deterministic compiler also
-accepts explicit custom targets, so specialist vocabularies are not limited to
-the built-in Chinese/English catalogue. An unknown “识别/检测/标注…” request is
-preserved as a stable custom semantic target instead of being silently replaced
-with unrelated generic measurements; a client or optional LLM control plane can
-later expand it into more precise positive/negative targets.
+- **下载失败**：检查访问 PyPI、GitHub、Hugging Face 的网络／代理，然后重新启动。可先用 `--basic` 验证基础功能。
+- **端口被占用**：关闭已有服务，或修改 `.env` 的 `MAB_PORT`，然后使用新的 `/docs` 地址。
+- **提示找不到模型**：已有 `.env` 不会自动更新；确认 provider、checkpoint 路径和下载开关。
+- **API 返回 401**：使用本次启动 JSON 输出中的令牌重新 Authorize。健康检查无需令牌。
+- **macOS 阻止打开下载文件**：根据系统提示在“隐私与安全性”中允许已确认来源的文件，或在终端使用 `bash start.command`；无需关闭系统安全保护。
 
-This version deliberately disables automatic acceptance. A score is evidence
-for review, not a calibrated probability, until a later prototype/training
-version supplies cross-recording validation and calibration profiles.
+## 许可证
 
-See `docs/model-smoke-test.md` for the tested checkpoints and this machine's
-CPU measurements.
-
-Set `MAB_HUGGINGFACE_CACHE` only when the sidecar should use a dedicated cache;
-otherwise MuQ uses the normal Hugging Face user cache.
+本仓库代码使用 [MIT License](LICENSE)。第三方库、模型代码、模型权重和音频数据遵循各自许可证；本项目的 MIT 授权不替代这些条款。模型与用户音频不会随仓库发布。

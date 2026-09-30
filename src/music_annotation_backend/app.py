@@ -14,6 +14,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import __version__
 from .analysis import analyze_range, inspect_asset
@@ -61,10 +62,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings, app.state.store, app.state.jobs, app.state.providers = cfg, store, jobs, providers
     app.state.interactive_assets = {}
 
-    def authorize(authorization: str | None = Header(default=None)) -> None:
+    bearer = HTTPBearer(auto_error=False)
+
+    def authorize(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> None:
         if cfg.session_token is None:
             return
-        if authorization != f"Bearer {cfg.session_token}":
+        if credentials is None or credentials.credentials != cfg.session_token:
             raise HTTPException(status_code=401, detail="invalid session token")
 
     protected = [Depends(authorize)]
