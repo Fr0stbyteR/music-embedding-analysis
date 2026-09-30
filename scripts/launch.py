@@ -13,6 +13,7 @@ from music_annotation_backend.config import Settings
 
 
 PROVIDER_EXTRAS = {
+    "clap_music": "clap",
     "laion_clap_music_htsat_base": "laion",
     "muq_mulan_large": "muq",
     "m2d_clap_2025": "m2d",
@@ -48,6 +49,11 @@ def main() -> int:
             return 1
         print(f"Installing dependencies for {provider}...", flush=True)
         subprocess.run([args.uv, "sync", "--locked", "--python", "3.11", "--inexact", "--extra", extra], check=True)
+        if provider == "clap_music":
+            print(f"Music CLAP download source: {settings.model_download_source}", flush=True)
+        elif provider in {"muq_mulan_large", "laion_clap_music_htsat_base"}:
+            print("This legacy provider uses Hugging Face, including nested encoders. "
+                  "For ModelScope downloads select MAB_AUTO_LOAD_PROVIDER=clap_music.", flush=True)
         if not settings.auto_load_allow_download:
             os.environ.setdefault("HF_HUB_OFFLINE", "1")
         else:

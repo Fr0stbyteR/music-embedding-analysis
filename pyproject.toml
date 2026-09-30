@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["httpx>=0.28,<1", "pytest>=8.3,<9", "pytest-asyncio>=0.25,<1"]
+clap = ["torch>=2.2", "transformers>=4.40,<5", "modelscope>=1.24,<2"]
 m2d = ["torch>=2.2", "torchaudio>=2.2", "timm>=1,<2", "nnAudio>=0.3,<1", "einops>=0.8,<1"]
 laion = ["laion-clap>=1.1.7", "torch>=2.2", "torchaudio>=2.2", "transformers>=4.40,<5"]
 # muq 0.1.0 has no upstream upper bound, but its EasyDict-based Conformer

@@ -40,6 +40,19 @@ def test_first_run_copies_config_and_installs_selected_extra(workspace, monkeypa
     assert started[0][-2:] == ["-m", "music_annotation_backend.main"]
 
 
+def test_new_default_installs_clap_extra(workspace, monkeypatch):
+    (workspace / ".env.example").write_text(
+        "MAB_PORT=0\nMAB_AUTO_LOAD_PROVIDER=clap_music\nMAB_MODEL_DOWNLOAD_SOURCE=modelscope\n",
+        encoding="utf-8",
+    )
+    installed = []
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs: installed.append(command))
+    monkeypatch.setattr(subprocess, "call", lambda command, **kwargs: 0)
+    assert launcher.main() == 0
+    assert installed[0][-2:] == ["--extra", "clap"]
+    assert launcher.Settings().model_download_source == "modelscope"
+
+
 def test_basic_mode_preserves_config_and_skips_model_install(workspace, monkeypatch):
     original = "MAB_PORT=0\nMAB_AUTO_LOAD_PROVIDER=muq_mulan_large\n"
     (workspace / ".env").write_text(original, encoding="utf-8")

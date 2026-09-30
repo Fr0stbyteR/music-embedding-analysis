@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
     model_root: Path = Field(default=Path("models"))
     vendor_root: Path = Field(default=Path("vendor"))
     huggingface_cache: Path | None = None
+    model_download_source: Literal["modelscope", "huggingface"] = "modelscope"
     host: str = "127.0.0.1"
     port: int = 49321
     session_token: str | None = None

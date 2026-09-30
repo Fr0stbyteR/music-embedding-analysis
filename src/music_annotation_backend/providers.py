@@ -249,6 +249,20 @@ class LaionClapProvider(Provider):
         return self.score_audio_embeddings_text(self.embed_audio_for_text(waveforms), texts)
 
 
+class ClapMusicProvider(LaionClapProvider):
+    provider_id = "clap_music"
+    display_name = "Music CLAP (Transformers / ModelScope)"
+    package_name = "transformers"
+    supports_training = False
+    weight_license = "Apache-2.0 (laion/larger_clap_music model card)"
+    commercial_use = True
+
+    def _load_sync(self, device: str, checkpoint_path: str | None, allow_download: bool) -> Any:
+        from .clap_music import TransformersClap, resolve_snapshot
+        directory = resolve_snapshot(self.settings, checkpoint_path, allow_download)
+        return TransformersClap(directory, device)
+
+
 class MuQMulanProvider(Provider):
     provider_id = "muq_mulan_large"
     display_name = "MuQ-MuLan large"
@@ -313,7 +327,7 @@ class MuQMulanProvider(Provider):
 
 class ProviderRegistry:
     def __init__(self, settings: Settings):
-        providers = (MockProvider(settings), M2DClapProvider(settings), LaionClapProvider(settings), MuQMulanProvider(settings))
+        providers = (MockProvider(settings), M2DClapProvider(settings), LaionClapProvider(settings), ClapMusicProvider(settings), MuQMulanProvider(settings))
         self.providers = {provider.provider_id: provider for provider in providers}
 
     def capabilities(self) -> list[ProviderCapability]:

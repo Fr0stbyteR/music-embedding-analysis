@@ -1,5 +1,22 @@
 # Model smoke test
 
+## ModelScope music CLAP (2026-10-01)
+
+The `clap_music` provider was downloaded from ModelScope's
+`laion/larger_clap_music` repository and loaded on Windows CPU while
+`HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`. Download plus cold load took
+54.92 seconds in this single observation (about 776 MB of weights).
+
+One second of silence produced finite `[1, 512]` audio embeddings. English and
+Chinese prompts produced finite `[1, 2]` similarity scores. A subsequent
+`allow_download=False` snapshot lookup successfully reused the ModelScope
+cache. This validates the download and inference path, not semantic accuracy
+or macOS inference. The new provider uses Transformers preprocessing and a
+separate provider ID; do not assume thresholds are interchangeable with the
+legacy `.pt` adapter.
+
+## Legacy providers
+
 Test date: 2026-09-07. Device: CPU; no NVIDIA runtime was visible. Timings are
 single cold-load/single-call observations, not a formal benchmark.
 

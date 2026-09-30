@@ -13,7 +13,7 @@ Windows 双击根目录的 **`start.cmd`**；macOS 双击 **`start.command`**。
 1. 使用现有 uv，或从官方来源安装到项目的 `.tools/uv`（不需要管理员密码，也不修改 shell 配置）。
 2. 自动准备 Python 3.11、`.venv` 和锁定版本的依赖。
 3. 首次从 `.env.example` 创建 `.env`；已有配置不会被覆盖。
-4. 安装所选模型依赖，并自动下载默认 LAION-CLAP 音乐模型和文本编码器。
+4. 安装所选模型依赖，默认从 ModelScope 下载音乐 CLAP（包含文本编码器与分词器）。
 5. 在本机启动服务，终端显示访问地址和会话令牌。
 
 首次下载包含数 GB 的模型／依赖，请预留空间并等待终端出现 `Application startup complete`。后续启动复用环境和缓存。macOS 默认使用 CPU；Apple Silicon 和 Intel 的模型依赖使用兼容版本，不自动启用 MPS。
@@ -70,7 +70,8 @@ uv run --no-sync pytest
 | `MAB_PORT` | 默认 `49321`，端口被占用时改为其他可用端口 |
 | `MAB_SESSION_TOKEN` | 可选固定令牌；不设置则启动时随机生成 |
 | `MAB_DATA_ROOT` | 默认 `.music-annotation-data`，保存本地音频、缓存和数据库 |
-| `MAB_AUTO_LOAD_PROVIDER` | 默认 `laion_clap_music_htsat_base`；留空只启用基础分析 |
+| `MAB_AUTO_LOAD_PROVIDER` | 首次默认 `clap_music`；留空只启用基础分析 |
+| `MAB_MODEL_DOWNLOAD_SOURCE` | `clap_music` 的下载源：默认 `modelscope`，可选 `huggingface` |
 | `MAB_AUTO_LOAD_DEVICE` | 默认 `auto`，有 CUDA 时使用 CUDA，否则 CPU |
 | `MAB_AUTO_LOAD_ALLOW_DOWNLOAD` | 首次默认 `true`；缓存完整后可设为 `false` |
 | `MAB_AUTO_LOAD_CHECKPOINT_PATH` | 可选的本地模型路径 |
@@ -79,12 +80,29 @@ uv run --no-sync pytest
 
 | 模式 | 配置值 | 准备方式 |
 | --- | --- | --- |
-| LAION-CLAP 音乐语义相似度 | `laion_clap_music_htsat_base` | 默认，一键安装和下载 |
+| 音乐 CLAP（Transformers 格式） | `clap_music` | 默认，从 ModelScope 一键安装和下载 |
+| 旧版 LAION-CLAP（原始 `.pt`） | `laion_clap_music_htsat_base` | 保留兼容，仍从 Hugging Face 下载权重与 RoBERTa |
 | MuQ-MuLan 中英文语义相似度 | `muq_mulan_large` | 启动器自动安装 `muq` extra；允许下载或提供本地路径 |
 | M2D 时序嵌入 | `m2d_clap_2025` | 启动器安装 `m2d` extra；需另行准备 vendor 源码和 checkpoint，见模型文档 |
 | librosa 基础分析 | 空值 | 无需模型权重 |
 
-离线使用模型需要同时缓存权重和嵌套文本编码器。首次先允许下载，成功启动后再改为 `false`。保持该设置时，启动器会开启 Hugging Face 离线模式。安装依赖仍可能联网；完全断网时需提前准备所有依赖。
+### 大陆用户与下载源
+
+新配置默认使用 ModelScope 的 [laion/larger_clap_music](https://modelscope.cn/models/laion/larger_clap_music)。它使用 Transformers 格式，包含音频／文本编码器和分词器；加载本地快照时禁止隐式访问 Hugging Face。只下载推理所需文件，不自动回退到另一下载源。
+
+已有 `.env` 不会被覆盖。希望使用新默认模型时，在 `.env` 设置：
+
+```dotenv
+MAB_AUTO_LOAD_PROVIDER=clap_music
+MAB_MODEL_DOWNLOAD_SOURCE=modelscope
+MAB_AUTO_LOAD_ALLOW_DOWNLOAD=true
+```
+
+改用 Hugging Face：把 `MAB_MODEL_DOWNLOAD_SOURCE` 改为 `huggingface`，仍加载同一个 `laion/larger_clap_music` 模型。不同下载源的快照分开缓存在 `models/downloads/`，切换源可能重新下载。配置也可通过同名环境变量覆盖。
+
+原始 `.pt` 的 `laion_clap_music_htsat_base` 与 `muq_mulan_large` 保留原有行为，仍可能访问 Hugging Face，包括嵌套编码器；此下载源选项不改变它们。暂未确认与 MuQ 匹配的 ModelScope 镜像，不使用名称相似但未经验证的权重替代。新的 `clap_music` 使用独立 provider ID，预处理实现与旧版不同，旧版检测阈值需重新验证。
+
+离线使用：成功下载后将 `MAB_AUTO_LOAD_ALLOW_DOWNLOAD=false`，`clap_music` 仅查所选源的本地缓存；也可用 `MAB_AUTO_LOAD_CHECKPOINT_PATH` 指向完整的 Transformers 模型目录（不接受原始 `.pt`）。旧版模型还需要缓存所有嵌套编码器。依赖、uv 和 Python 的安装仍可能访问 PyPI / GitHub，此选项只控制新音乐 CLAP 的模型下载源。
 
 ## API 使用流程
 

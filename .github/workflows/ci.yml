@@ -67,5 +67,5 @@ jobs:
       - name: macOS CLAP dependency check
         if: runner.os == 'macOS'
         run: |
-          uv sync --locked --python 3.11 --extra laion
-          uv run --no-sync python -c "import torch, torchaudio, laion_clap; print(torch.__version__, torchaudio.__version__)"
+          uv sync --locked --python 3.11 --extra clap
+          uv run --no-sync python -c "import torch; from transformers import ClapModel, ClapProcessor; from modelscope import snapshot_download; print(torch.__version__)"
