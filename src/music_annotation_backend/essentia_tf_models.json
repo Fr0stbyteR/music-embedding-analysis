@@ -1,0 +1,172 @@
+[
+  {
+    "name": "msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/feature-extractors/musicnn/msd-musicnn-1.json",
+    "sha256": "8e6b3b509f0610c0e65dce467fd459d6777509388eaddb13ed138d8ac1341ffe"
+  },
+  {
+    "name": "msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/feature-extractors/musicnn/msd-musicnn-1.pb",
+    "sha256": "cdea0722bcee7f731286843f2233e3aa69887bb5c3e2dce011eff55f38d04f3e"
+  },
+  {
+    "name": "discogs-effnet-bs64-1.json",
+    "url": "https://essentia.upf.edu/models/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.json",
+    "sha256": "a35003202384735c33154e20264267f9941705218a7b93202b655a1d408d4ff6"
+  },
+  {
+    "name": "discogs-effnet-bs64-1.pb",
+    "url": "https://essentia.upf.edu/models/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb",
+    "sha256": "3ed9af50d5367c0b9c795b294b00e7599e4943244f4cbd376869f3bfc87721b1"
+  },
+  {
+    "name": "mtg_jamendo_instrument-discogs-effnet-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mtg_jamendo_instrument/mtg_jamendo_instrument-discogs-effnet-1.json",
+    "sha256": "7d02204c6451b5615e2968ec6364bbae3b915c886e608f05f00d3a38dc5177c4"
+  },
+  {
+    "name": "mtg_jamendo_instrument-discogs-effnet-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mtg_jamendo_instrument/mtg_jamendo_instrument-discogs-effnet-1.pb",
+    "sha256": "2e8c3003c722e098da371b6a1f7ad0ce62fac0dcfc09c7c7997d430941196c2a"
+  },
+  {
+    "name": "mtg_jamendo_moodtheme-discogs-effnet-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mtg_jamendo_moodtheme/mtg_jamendo_moodtheme-discogs-effnet-1.json",
+    "sha256": "d62cd90263e4d613fa7fcce7a831e339450394794af63685f96e065c1a896ab0"
+  },
+  {
+    "name": "mtg_jamendo_moodtheme-discogs-effnet-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mtg_jamendo_moodtheme/mtg_jamendo_moodtheme-discogs-effnet-1.pb",
+    "sha256": "03f2b047020aee4ab39f8880da7bdae2a36d06a1508d656c6d424ad4d6de07a9"
+  },
+  {
+    "name": "mtg_jamendo_genre-discogs-effnet-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mtg_jamendo_genre/mtg_jamendo_genre-discogs-effnet-1.json",
+    "sha256": "b0ae89110ddbdba5ed3ad375910b1cffc738436fbb4138ac4c2801b48fc5ec59"
+  },
+  {
+    "name": "mtg_jamendo_genre-discogs-effnet-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mtg_jamendo_genre/mtg_jamendo_genre-discogs-effnet-1.pb",
+    "sha256": "a46f94fd85b03b403d6498a820e3ee652e05a24fc2a344d84545ac36224e698e"
+  },
+  {
+    "name": "timbre-discogs-effnet-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/timbre/timbre-discogs-effnet-1.json",
+    "sha256": "7bc71d932b4bd1254de9941d169c3b5b6daf5aaec7b3eeb6787b87f395b6d053"
+  },
+  {
+    "name": "timbre-discogs-effnet-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/timbre/timbre-discogs-effnet-1.pb",
+    "sha256": "0e474d9b297a6b76917a9260618d44d336ecb103560e66b785231cf69ff67a25"
+  },
+  {
+    "name": "voice_instrumental-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/voice_instrumental/voice_instrumental-msd-musicnn-1.json",
+    "sha256": "404e43517bbbe211c4fdb3d29febbfee86fecf8e4671ad630f9c1004e4cb8662"
+  },
+  {
+    "name": "voice_instrumental-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/voice_instrumental/voice_instrumental-msd-musicnn-1.pb",
+    "sha256": "eb762cc7ee6751b2ea32179d3716e2d60a1d1a9e615b7e3b8be8a6f79d71675e"
+  },
+  {
+    "name": "mood_acoustic-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_acoustic/mood_acoustic-msd-musicnn-1.json",
+    "sha256": "690f752248af4d75eac4e35705c30c649ebb84b73aca146746f854496cad41a7"
+  },
+  {
+    "name": "mood_acoustic-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_acoustic/mood_acoustic-msd-musicnn-1.pb",
+    "sha256": "519ee3af8210fe32e021002a0094546aeb6fb5a59d22b7d53c48e4ee1ac9e6cc"
+  },
+  {
+    "name": "mood_electronic-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_electronic/mood_electronic-msd-musicnn-1.json",
+    "sha256": "2305ef6ac49b58af97a463ad20bf86c2af707886eed5f31cd84050f2463db3b5"
+  },
+  {
+    "name": "mood_electronic-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_electronic/mood_electronic-msd-musicnn-1.pb",
+    "sha256": "86c109b504fc6cf666c7513d684381a594218a552c3c954f212dd3a9d0c6cdc5"
+  },
+  {
+    "name": "tonal_atonal-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/tonal_atonal/tonal_atonal-msd-musicnn-1.json",
+    "sha256": "f4b3f21efef86288dcd197cc51b77e42c82d7ecbfe1d56b8241b267f0be0977a"
+  },
+  {
+    "name": "tonal_atonal-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/tonal_atonal/tonal_atonal-msd-musicnn-1.pb",
+    "sha256": "45a36e68a70a6692a60434ee3ae81df9bd5c402204fb04c3355c39f9e3d24aaf"
+  },
+  {
+    "name": "danceability-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/danceability/danceability-msd-musicnn-1.json",
+    "sha256": "9ec56f2b1e710da394c25245524f5caa772905f5978fc585dc1d2f6d248a2b48"
+  },
+  {
+    "name": "danceability-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/danceability/danceability-msd-musicnn-1.pb",
+    "sha256": "874a4b86afc9e12de3f15a47baf9ff1ac676ace109c56203e26103f2259eb95e"
+  },
+  {
+    "name": "mood_happy-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_happy/mood_happy-msd-musicnn-1.json",
+    "sha256": "db474eef51d8216dd885e5dd417af5f0dfec87ec2107b9e089157fd5cbda00d2"
+  },
+  {
+    "name": "mood_happy-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_happy/mood_happy-msd-musicnn-1.pb",
+    "sha256": "d7382bc60304ea4578c298222968cd8d600c31252c7bf3e90b1f728ebb3ec36d"
+  },
+  {
+    "name": "mood_sad-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_sad/mood_sad-msd-musicnn-1.json",
+    "sha256": "9761da8e18db2ea54c5fca78bd0fcd533eeab92cd208ff7bf3e7e4e818d74a31"
+  },
+  {
+    "name": "mood_sad-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_sad/mood_sad-msd-musicnn-1.pb",
+    "sha256": "a5e908cf7f59e8c379ff7c7d138dd85416985fddaebb5de14ca4193200411f61"
+  },
+  {
+    "name": "mood_relaxed-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_relaxed/mood_relaxed-msd-musicnn-1.json",
+    "sha256": "2e0aba50ce50b785e23d8dcbb029aa7b64dd926487599d5dc0bcc8b5ec78e582"
+  },
+  {
+    "name": "mood_relaxed-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_relaxed/mood_relaxed-msd-musicnn-1.pb",
+    "sha256": "1252d28ca7d2204e34e0cdf84a00aa2bc9627a87bdcf923df3aad39cfa69d2d9"
+  },
+  {
+    "name": "mood_aggressive-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_aggressive/mood_aggressive-msd-musicnn-1.json",
+    "sha256": "a3030dca0f3cbefd2a0f300ec97c24cfc65092df8798218699f8e110b3f0d1d0"
+  },
+  {
+    "name": "mood_aggressive-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_aggressive/mood_aggressive-msd-musicnn-1.pb",
+    "sha256": "3b6eb5645e4b47a2ceb28ef3f8612f224640c583048770791b9fc6e8e5627a67"
+  },
+  {
+    "name": "mood_party-msd-musicnn-1.json",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_party/mood_party-msd-musicnn-1.json",
+    "sha256": "70ec365f66216b68d00cb56819fd5191574c3afbecd67abbff119e1d6810ebbf"
+  },
+  {
+    "name": "mood_party-msd-musicnn-1.pb",
+    "url": "https://essentia.upf.edu/models/classification-heads/mood_party/mood_party-msd-musicnn-1.pb",
+    "sha256": "765b096300ee1d92103cb0a122fc12c33882166fb94d37875284e82ce06322a1"
+  },
+  {
+    "name": "deepsquare-k16-3.json",
+    "url": "https://essentia.upf.edu/models/tempo/tempocnn/deepsquare-k16-3.json",
+    "sha256": "14228d851046666089d6033d11785f469766c2c3c043afa8d41310d5faf2be2f"
+  },
+  {
+    "name": "deepsquare-k16-3.pb",
+    "url": "https://essentia.upf.edu/models/tempo/tempocnn/deepsquare-k16-3.pb",
+    "sha256": "0086829d55c252262f2f768ce5c94512bf1ed759cdeb01a863766ed071478798"
+  }
+]

@@ -12,6 +12,7 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 algorithms = module.get_all_algorithms(str(root / "src/algorithms"), str(root / "src"))
 pending = ["RMS", "Energy", "Loudness", "ZeroCrossingRate", "Centroid", "RollOff", "Flatness", "Crest", "Flux", "Entropy", "SpectralComplexity", "HFC", "CentralMoments", "DistributionShape", "SpectralPeaks", "Dissonance", "PitchYinFFT", "MelBands", "BarkBands", "ERBBands", "MFCC", "GFCC", "HPCP", "Key", "OnsetDetection", "Onsets", "FrameCutter", "TensorflowInputMusiCNN", "TensorflowPredict"]
+pending.append("TensorflowInputTempoCNN")
 selected = {}
 
 def write_changed(path, text):

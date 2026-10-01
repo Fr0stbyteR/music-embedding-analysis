@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from tempfile import TemporaryFile
+from tempfile import TemporaryFile, TemporaryDirectory
 import time
 from urllib.request import urlopen
 from uuid import uuid4
@@ -95,7 +95,7 @@ def extract(archive, destination):
 
 
 def source_fingerprint(root):
-    return hashlib.sha256(b"".join((root / "native/essentia" / name).read_bytes() for name in ("worker.cpp", "features_native.h", "mood_native.h", "generate.py", "CMakeLists.txt"))).hexdigest()
+    return hashlib.sha256(b"".join((root / "native/essentia" / name).read_bytes() for name in ("worker.cpp", "features_native.h", "mood_native.h", "tensorflow_native.h", "generate.py", "CMakeLists.txt"))).hexdigest()
 
 
 def build_windows(root, uv):
@@ -166,6 +166,21 @@ def verify_features(runtime):
         EssentiaAnalyzer.validate_result(result, algorithm, options, 3)
 
 
+def verify_tensorflow(settings):
+    from types import SimpleNamespace
+    import soundfile as sf
+    from .essentia_tf import ALGORITHMS as TF_ALGORITHMS, TensorflowAnalyzer
+    from .schemas import InteractiveLibrosaRequest
+    with TemporaryDirectory() as folder:
+        directory = Path(folder)
+        audio = (.1 * np.sin(2 * np.pi * 440 * np.arange(16000 * 3) / 16000)).astype(np.float32)
+        path = directory / "self-test.wav"; sf.write(path, audio, 16000)
+        analyzer = TensorflowAnalyzer(settings); analyzer.cache_root = directory / "cache"
+        asset = SimpleNamespace(path=str(path), duration_seconds=3, content_hash="tf-startup-test-v1")
+        for index, algorithm in enumerate(sorted(TF_ALGORITHMS), 1):
+            print(f"Essentia TensorFlow first-run check {index}/{len(TF_ALGORITHMS)}: {algorithm}", flush=True)
+            analyzer.analyze(asset, InteractiveLibrosaRequest(algorithm=algorithm))
+
 def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
     if settings.essentia_setup == "off":
         print("Essentia automatic setup disabled by MAB_ESSENTIA_SETUP=off.", flush=True)
@@ -174,11 +189,13 @@ def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
     if system not in {"Windows", "Darwin"}:
         raise RuntimeError("Automatic Essentia setup supports Windows x64 and macOS Intel/Apple Silicon")
     with_mood = settings.essentia_setup_mood and not basic
+    with_tensorflow = settings.essentia_setup_tensorflow and not basic
     runtime = feature_runtime(settings)
     ready = False
     try:
         capability = runtime.probe()
         ready = ALGORITHMS.issubset(capability.get("features", [])) and (not with_mood or bool(capability.get("tensorflow")))
+        ready = ready and (not with_tensorflow or capability.get("tensorflowFeatures") == 1)
     except RuntimeError:
         pass
     installed = root / ".tools/essentia-runtime"
@@ -209,7 +226,18 @@ def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
             else:
                 download(entry, settings.model_root / "essentia")
     manifest = installed / "ready.json"
+    if with_tensorflow:
+        from .essentia_tf import MANIFEST
+        print("Preparing official Essentia TensorFlow models (check model weight licenses).", flush=True)
+        for entry in MANIFEST:
+            download(Download(**entry), settings.model_root / "essentia")
+        if capability.get("tensorflowFeatures") != 1:
+            raise RuntimeError("Native runtime is missing Essentia TensorFlow support")
     identity = {"runtime": capability, "signature": runtime.signature, "setup": digest(Path(__file__)), "adapter": digest(Path(__file__).with_name("essentia_python_worker.py")), "mood": with_mood}
+    identity["tensorflow"] = with_tensorflow
+    if with_tensorflow:
+        identity["tensorflowGraphs"] = [digest(settings.model_root / "essentia" / entry["name"]) for entry in MANIFEST]
+        identity["tensorflowAdapter"] = digest(Path(__file__).with_name("essentia_tf_worker.py"))
     if with_mood:
         analyzer = MoodAnalyzer(settings)
         identity["graphs"] = [digest(path) for path in (analyzer.embedding_path, analyzer.regression_path)]
@@ -220,6 +248,8 @@ def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
         verified = False
     if not verified:
         verify_features(runtime)
+        if with_tensorflow:
+            verify_tensorflow(settings)
         if with_mood:
             analyzer._load()
             audio = (.1 * np.sin(2 * np.pi * 440 * np.arange(48000) / 16000)).astype(np.float32)
@@ -232,4 +262,4 @@ def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
         temporary = manifest.with_name(f"ready.{uuid4().hex}.tmp")
         temporary.write_text(serialized, encoding="utf-8")
         temporary.replace(manifest)
-    print(f"Essentia ready: {len(ALGORITHMS)} feature modules · {capability['runtime']}" + (" · VA model ready" if with_mood else ""), flush=True)
+    print(f"Essentia ready: {len(ALGORITHMS)} feature modules · {capability['runtime']}" + (" · VA model ready" if with_mood else "") + (" · 21 TensorFlow modules ready" if with_tensorflow else ""), flush=True)

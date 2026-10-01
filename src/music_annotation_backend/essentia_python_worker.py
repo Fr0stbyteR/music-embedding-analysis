@@ -27,7 +27,8 @@ def probe():
     if abs(es.RMS()(tone) - np.sqrt(.5)) > .00001:
         raise RuntimeError("Essentia RMS self-test failed")
     return {"protocol": 1, "runtime": "essentia-python", "essentiaVersion": essentia.__version__,
-        "features": sorted(ALGORITHMS), "tensorflow": hasattr(es, "TensorflowPredictMusiCNN") and hasattr(es, "TensorflowPredict2D")}
+        "features": sorted(ALGORITHMS), "tensorflow": hasattr(es, "TensorflowPredictMusiCNN") and hasattr(es, "TensorflowPredict2D"),
+        "tensorflowFeatures": int(all(hasattr(es, name) for name in ("TensorflowInputMusiCNN", "TensorflowInputTempoCNN", "TensorflowPredict")))}
 
 
 def regions(classes, duration, hop_seconds, minimum_duration, name):
@@ -158,6 +159,17 @@ def main():
     with redirect_stdout(sys.stderr):
         if sys.argv[1:] in (["--capabilities"], ["--self-test"]):
             result = probe()
+        elif len(sys.argv) in (5, 7) and sys.argv[1] in {"--tf-backbone", "--tf-head"}:
+            from .essentia_tf_worker import backbone, head
+            data = sys.stdin.buffer.read(10800 * 16000 * 4 + 1)
+            if not data or len(data) % 4 or len(data) > 10800 * 16000 * 4: raise ValueError("Invalid TF PCM size")
+            values = np.frombuffer(data, dtype="<f4")
+            if not np.isfinite(values).all(): raise ValueError("Non-finite TF input")
+            if sys.argv[1] == "--tf-backbone" and len(sys.argv) == 5:
+                result = backbone(values, sys.argv[2], sys.argv[3], int(sys.argv[4]))
+            elif sys.argv[1] == "--tf-head" and len(sys.argv) == 7:
+                result = head(values, sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]), int(sys.argv[6]))
+            else: raise ValueError("Invalid TF command")
         elif len(sys.argv) == 14 and sys.argv[1] == "--features":
             fields = ["sampleRate", "frameLength", "hopLength", "bands", "coefficients", "rollPercent", "thresholdDb", "minimumDuration", "confidence", "keyWindow", "tuning"]
             options = {key: int(value) if i < 5 else float(value) for i, (key, value) in enumerate(zip(fields, sys.argv[3:]))}

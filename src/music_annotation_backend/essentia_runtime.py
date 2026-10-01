@@ -20,7 +20,7 @@ def feature_runtime(settings):
     if settings.essentia_native_executable is not None or executable.is_file() or platform.system() == "Windows":
         return NativeEssentia(executable, settings.essentia_native_timeout_seconds)
     spec = importlib.util.find_spec("essentia")
-    paths = [Path(__file__).with_name("essentia_python_worker.py")]
+    paths = [Path(__file__).with_name(name) for name in ("essentia_python_worker.py", "essentia_tf_worker.py")]
     if spec and spec.origin:
         paths.extend(Path(spec.origin).parent.glob("*.so"))
         paths.append(Path(spec.origin))

@@ -22,13 +22,13 @@ class Runtime:
     def probe(self):
         if not self.available:
             raise RuntimeError("Missing runtime")
-        return {"runtime": "test-native", "features": sorted(ALGORITHMS), "tensorflow": self.tensorflow}
+        return {"runtime": "test-native", "features": sorted(ALGORITHMS), "tensorflow": self.tensorflow, "tensorflowFeatures": int(self.tensorflow)}
 
 
 @pytest.fixture
 def install(tmp_path, monkeypatch):
     settings = Settings(vendor_root=tmp_path / "vendor", model_root=tmp_path / "models",
-        essentia_native_executable=None, essentia_setup="auto", essentia_setup_mood=False)
+        essentia_native_executable=None, essentia_setup="auto", essentia_setup_mood=False, essentia_setup_tensorflow=False)
     runtime = Runtime(tmp_path)
     checks = []
     monkeypatch.setattr(setup, "feature_runtime", lambda _: runtime)
@@ -123,6 +123,45 @@ def test_self_test_failure_does_not_write_ready_manifest(install, monkeypatch):
         raise RuntimeError("GFCC failed")
     monkeypatch.setattr(setup, "verify_features", fail)
     with pytest.raises(RuntimeError, match="GFCC"):
+        setup.ensure_essentia(settings, root, "uv")
+    assert not (root / ".tools/essentia-runtime/ready.json").exists()
+
+
+@pytest.mark.parametrize("system", ["Windows", "Darwin"])
+def test_tensorflow_setup_downloads_checks_and_reuses_on_each_platform(install, monkeypatch, system):
+    settings, _, checks, root = install
+    settings.essentia_setup_tensorflow = True
+    monkeypatch.setattr(setup.platform, "system", lambda: system)
+    downloaded = []
+    def download(entry, folder):
+        downloaded.append(entry.name)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / entry.name
+        target.write_bytes(entry.name.encode())
+        return target
+    monkeypatch.setattr(setup, "download", download)
+    monkeypatch.setattr(setup, "verify_tensorflow", lambda _: checks.append("tf-inference"))
+    setup.ensure_essentia(settings, root, "uv")
+    setup.ensure_essentia(settings, root, "uv")
+    assert checks == ["features", "tf-inference"]
+    assert len(set(downloaded)) == 34
+    assert '"tensorflow": true' in (root / ".tools/essentia-runtime/ready.json").read_text()
+
+
+def test_tensorflow_failed_inference_never_marks_install_ready(install, monkeypatch):
+    settings, _, _, root = install
+    settings.essentia_setup_tensorflow = True
+    monkeypatch.setattr(setup.platform, "system", lambda: "Darwin")
+    def download(entry, folder):
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / entry.name
+        target.write_bytes(entry.name.encode())
+        return target
+    monkeypatch.setattr(setup, "download", download)
+    def fail(_):
+        raise RuntimeError("TF inference failed")
+    monkeypatch.setattr(setup, "verify_tensorflow", fail)
+    with pytest.raises(RuntimeError, match="TF inference failed"):
         setup.ensure_essentia(settings, root, "uv")
     assert not (root / ".tools/essentia-runtime/ready.json").exists()
 

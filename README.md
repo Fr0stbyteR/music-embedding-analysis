@@ -134,6 +134,7 @@ POST /v1/interactive-assets
 POST /v1/interactive-assets/{assetId}:describe
 POST /v1/interactive-assets/{assetId}:librosa
 POST /v1/interactive-assets/{assetId}:essentia
+POST /v1/interactive-assets/{assetId}:essentia-tf
 POST /v1/interactive-assets/{assetId}:mood-curve
 ```
 
@@ -144,6 +145,7 @@ POST /v1/interactive-assets/{assetId}:mood-curve
 ## 文档与目录
 
 - [Essentia 原生特征模块](docs/essentia-features.md)：29 项指标、矩阵与可编辑标记，参数、缓存和数值含义。
+- [Essentia TensorFlow 模块](docs/essentia-tensorflow.md)：21 个模型视图、共享推理缓存、启动准备及模型准确性限制。
 
 - [后端架构](docs/backend-architecture.md)：存储、异步任务与标注循环。
 - [模型选择](docs/model-selection.md)与[已有模型测试](docs/model-smoke-test.md)：模型能力、限制与本地 CPU 测量。

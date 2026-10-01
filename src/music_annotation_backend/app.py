@@ -21,6 +21,7 @@ from .analysis import analyze_range, inspect_asset
 from .config import Settings
 from .mood import MoodAnalyzer, MoodUnavailable
 from .essentia_api import EssentiaAnalyzer, EssentiaUnavailable
+from .essentia_tf import TensorflowAnalyzer
 from .schemas import MoodCurveRequest
 from .jobs import JobManager
 from .interactive import describe_asset, relevance_curve
@@ -70,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.mood = mood
     essentia = EssentiaAnalyzer(cfg)
     app.state.essentia = essentia
+    tensorflow = TensorflowAnalyzer(cfg)
+    app.state.essentia_tf = tensorflow
     omr = OmrService(cfg)
     app.state.omr = omr
 
@@ -218,8 +221,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return mood.capabilities()
 
     @app.get("/v1/essentia/capabilities", dependencies=protected)
+    # Standard DSP and learned models deliberately have separate capabilities.
     def essentia_capabilities() -> dict:
         return essentia.capabilities()
+
+    @app.get("/v1/essentia-tf/capabilities", dependencies=protected)
+    def tensorflow_capabilities():
+        return tensorflow.capabilities()
+
+    @app.post("/v1/interactive-assets/{asset_id}:essentia-tf", dependencies=protected)
+    async def interactive_tensorflow(asset_id: UUID, value: InteractiveLibrosaRequest):
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None: raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        try:
+            return await asyncio.to_thread(tensorflow.analyze, asset, value)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except EssentiaUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
 
     @app.post("/v1/interactive-assets/{asset_id}:essentia", dependencies=protected)
     async def interactive_essentia(asset_id: UUID, value: InteractiveLibrosaRequest) -> dict:

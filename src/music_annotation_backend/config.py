@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     essentia_native_timeout_seconds: float = Field(default=1800, ge=30, le=10800)
     essentia_setup: Literal["auto", "off"] = "auto"
     essentia_setup_mood: bool = True
+    essentia_setup_tensorflow: bool = True
     omr_python: Path | None = None
     omr_auto_install: bool = True
     omr_timeout_seconds: float = Field(default=1800, ge=30, le=10800)

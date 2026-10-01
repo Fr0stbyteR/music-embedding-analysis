@@ -8,6 +8,7 @@
 #include <vector>
 #include "mood_native.h"
 #include "features_native.h"
+#include "tensorflow_native.h"
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
@@ -45,7 +46,7 @@ std::string selfTest() {
   std::ostringstream json;
   json << "{\"protocol\":1,\"runtime\":\"essentia-cpp\",\"essentiaRevision\":\"" << ESSENTIA_GIT_SHA
     << "\",\"tensorflow\":\"" << TF_Version() << "\",\"rms\":" << value
-    << ",\"mfccCount\":" << coefficients.size() << ",\"melBands\":" << mel.size() << ",\"features\":" << featureCatalog() << '}';
+    << ",\"mfccCount\":" << coefficients.size() << ",\"melBands\":" << mel.size() << ",\"tensorflowFeatures\":1,\"features\":" << featureCatalog() << '}';
   return json.str();
 }
 
@@ -72,6 +73,10 @@ int main(int argc, char** argv) {
     std::string result;
     if (argc == 2 && (std::string(argv[1]) == "--self-test" || std::string(argv[1]) == "--capabilities")) {
       result = selfTest();
+    } else if (argc == 5 && std::string(argv[1]) == "--tf-backbone") {
+      result = tfBackbone(readPCM(), argv[2], argv[3], std::stoi(argv[4]));
+    } else if (argc == 7 && std::string(argv[1]) == "--tf-head") {
+      result = tfHead(readPCM(15000000), argv[2], argv[3], argv[4], std::stoi(argv[5]), std::stoi(argv[6]));
     } else if (argc == 7 && std::string(argv[1]) == "--mood") {
       auto pcm = readPCM();
       MoodNative models(argv[2], argv[3]);
