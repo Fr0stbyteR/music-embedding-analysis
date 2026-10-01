@@ -54,6 +54,31 @@ def test_native_runtime_errors_and_missing_explicit_worker(monkeypatch, tmp_path
     assert analyzer.capabilities()["runtime"] == "essentia-cpp"
 
 
+def test_probe_has_independent_cold_import_deadline_and_caches_success(monkeypatch, tmp_path):
+    worker = NativeEssentia(tmp_path / "worker.exe", 45, probe_timeout_seconds=180)
+    calls = []
+    def run(arguments, **kwargs):
+        calls.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(arguments, 0, b'{"protocol": 1, "runtime": "essentia-cpp"}', b"")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert worker.probe()["runtime"] == "essentia-cpp"
+    assert worker.probe()["runtime"] == "essentia-cpp"
+    assert calls == [180]
+    assert worker.timeout_seconds == 45
+
+
+@pytest.mark.parametrize("stderr", [b"Importing TensorFlow...", "Importing TensorFlow..."])
+def test_probe_timeout_preserves_worker_diagnostics_and_is_not_cached(monkeypatch, tmp_path, stderr):
+    worker = NativeEssentia(tmp_path / "worker.exe", probe_timeout_seconds=180)
+    def timeout(arguments, **kwargs):
+        raise subprocess.TimeoutExpired(arguments, kwargs["timeout"], stderr=stderr)
+    monkeypatch.setattr(subprocess, "run", timeout)
+    with pytest.raises(RuntimeError, match="timed out after 180 seconds.*Importing TensorFlow"):
+        worker.probe()
+    assert worker.info is None
+    assert worker.signature is None
+
+
 def test_real_native_mood_api_and_cache_when_installed(tmp_path):
     # Optional integration: never download models or compile during pytest.
     backend = Path(__file__).resolve().parents[1]

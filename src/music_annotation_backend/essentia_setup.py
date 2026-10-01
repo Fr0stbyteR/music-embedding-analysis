@@ -212,6 +212,7 @@ def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
         else:
             install_mac(root, uv)
         runtime = feature_runtime(settings)
+        print(f"Checking installed Essentia capabilities (up to {settings.essentia_probe_timeout_seconds:g}s for cold native import)...", flush=True)
         capability = runtime.probe()
     if not ALGORITHMS.issubset(capability.get("features", [])):
         raise RuntimeError("Essentia runtime is missing one or more of the 29 required analyses")

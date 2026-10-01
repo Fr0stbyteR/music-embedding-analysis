@@ -43,6 +43,10 @@ addopts = "-q"
 # Keep a matched CPU stack with wheels for both Intel and Apple Silicon Macs.
 # PyTorch 2.3+ no longer publishes macOS x86_64 wheels.
 constraint-dependencies = [
+  # Later Numba/llvmlite releases have no macOS Intel wheels. Do not require
+  # users to compile LLVM just to install librosa on an Intel Mac.
+  "numba==0.62.1; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+  "llvmlite==0.45.1; sys_platform == 'darwin' and platform_machine == 'x86_64'",
   "torch==2.2.2; sys_platform == 'darwin'",
   "torchaudio==2.2.2; sys_platform == 'darwin'",
   "torchvision==0.17.2; sys_platform == 'darwin'",

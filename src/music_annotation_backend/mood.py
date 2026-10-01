@@ -30,7 +30,8 @@ class MoodAnalyzer:
         self.models = None
         self.identity = None
         executable = native_executable(settings)
-        self.native = NativeEssentia(executable, settings.essentia_native_timeout_seconds)
+        self.native = NativeEssentia(executable, settings.essentia_native_timeout_seconds,
+            probe_timeout_seconds=settings.essentia_probe_timeout_seconds)
 
     @property
     def native_selected(self) -> bool:

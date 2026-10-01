@@ -163,6 +163,8 @@ POST /v1/interactive-assets/{assetId}:mood-curve
 - **提示找不到模型**：已有 `.env` 不会自动更新；确认 provider、checkpoint 路径和下载开关。
 - **API 返回 401**：使用本次启动 JSON 输出中的令牌重新 Authorize。健康检查无需令牌。
 - **macOS 阻止打开下载文件**：根据系统提示在“隐私与安全性”中允许已确认来源的文件，或在终端使用 `bash start.command`；无需关闭系统安全保护。
+- **Intel Mac 安装 llvmlite 时要求 LLVM**：使用更新的 `pyproject.toml` 和 `uv.lock`。Intel Mac 单独固定 Numba 0.62.1／llvmlite 0.45.1 的官方 wheel，不需要手动编译 LLVM；其他平台保留原有版本。
+- **macOS 首次 Essentia 探测超时**：首次载入 NumPy／TensorFlow 可能较慢，能力探测默认等待 180 秒。可在 `.env` 设置 `MAB_ESSENTIA_PROBE_TIMEOUT_SECONDS`（30–1800 秒）；分析计算超时仍由 `MAB_ESSENTIA_NATIVE_TIMEOUT_SECONDS` 控制。失败时保留最后一段 worker 日志，不会跳过 DSP／VA／TensorFlow 自检。
 
 ## 许可证
 

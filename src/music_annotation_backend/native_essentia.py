@@ -12,9 +12,10 @@ import numpy as np
 
 
 class NativeEssentia:
-    def __init__(self, executable: Path, timeout_seconds: float = 1800, *, command_prefix=None, expected_runtime="essentia-cpp", signature_paths=None):
+    def __init__(self, executable: Path, timeout_seconds: float = 1800, *, command_prefix=None, expected_runtime="essentia-cpp", signature_paths=None, probe_timeout_seconds: float = 30):
         self.executable = executable.resolve()
         self.timeout_seconds = timeout_seconds
+        self.probe_timeout_seconds = probe_timeout_seconds
         self.signature = None
         self.info = None
         self.command_prefix = command_prefix or [str(self.executable)]
@@ -29,7 +30,14 @@ class NativeEssentia:
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 env={**os.environ, "TF_CPP_MIN_LOG_LEVEL": "2"},
             )
-        except (OSError, subprocess.TimeoutExpired) as error:
+        except subprocess.TimeoutExpired as error:
+            diagnostic = error.stderr or b""
+            if isinstance(diagnostic, bytes):
+                diagnostic = diagnostic.decode("utf-8", errors="replace")
+            diagnostic = diagnostic[-2000:].strip()
+            detail = f" Last worker output: {diagnostic}" if diagnostic else ""
+            raise RuntimeError(f"Native Essentia could not run: worker timed out after {timeout:g} seconds.{detail}") from error
+        except OSError as error:
             raise RuntimeError(f"Native Essentia could not run: {error}") from error
         if result.returncode:
             diagnostic = result.stderr.decode("utf-8", errors="replace")[-2000:].strip()
@@ -42,7 +50,7 @@ class NativeEssentia:
     def probe(self) -> dict:
         signature = tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size) for path in self.signature_paths if path.is_file())
         if signature != self.signature or self.info is None:
-            info = self._run(["--capabilities"])
+            info = self._run(["--capabilities"], timeout=self.probe_timeout_seconds)
             if not isinstance(info, dict) or info.get("protocol") != 1 or info.get("runtime") != self.expected_runtime:
                 raise RuntimeError("Unsupported native Essentia worker protocol")
             self.info, self.signature = info, signature

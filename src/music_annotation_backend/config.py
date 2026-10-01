@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     mood_regression_graph: Path | None = None
     essentia_native_executable: Path | None = None
     essentia_native_timeout_seconds: float = Field(default=1800, ge=30, le=10800)
+    # Independent of analysis duration: importing NumPy/TensorFlow on a fresh
+    # macOS runner may exceed the former hard-coded 30-second probe deadline.
+    essentia_probe_timeout_seconds: float = Field(default=180, ge=30, le=1800)
     essentia_setup: Literal["auto", "off"] = "auto"
     essentia_setup_mood: bool = True
     essentia_setup_tensorflow: bool = True

@@ -21,7 +21,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
-      - run: uv sync --locked --python 3.11 --extra dev
+      # Fail clearly if the locked JIT stack loses a wheel; never silently
+      # compile llvmlite/LLVM on a first-run supported platform.
+      - run: uv sync --locked --python 3.11 --extra dev --no-build-package numba --no-build-package llvmlite
       - name: Windows first-run Essentia setup (all DSP + real VA inference)
         if: runner.os == 'Windows'
         shell: pwsh

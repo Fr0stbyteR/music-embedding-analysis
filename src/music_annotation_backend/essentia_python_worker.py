@@ -17,8 +17,10 @@ REQUIRED = set(SCALARS.values()) | set(BANDS.values()) | {"FrameCutter", "Window
 
 
 def probe():
+    print("Essentia probe: importing native package and TensorFlow algorithms...", file=sys.stderr, flush=True)
     import essentia
     import essentia.standard as es
+    print("Essentia probe: native imports ready; checking RMS and algorithm availability...", file=sys.stderr, flush=True)
     from .essentia_api import ALGORITHMS
     missing = sorted(name for name in REQUIRED if not hasattr(es, name))
     if missing:
