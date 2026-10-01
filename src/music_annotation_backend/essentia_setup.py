@@ -19,6 +19,7 @@ import numpy as np
 
 from .essentia_api import ALGORITHMS, EssentiaAnalyzer, EssentiaOptions
 from .essentia_runtime import feature_runtime
+from .essentia_macos import SDL2_NAME, SDL2_SHA256, sdl_compat_directory
 from .mood import MoodAnalyzer
 
 REVISION = "7320015a1cad3ac1dc038b52ef94803587d09986"
@@ -36,6 +37,7 @@ EIGEN = Download("eigen-3.4.0.tar.gz", "https://gitlab.com/libeigen/eigen/-/arch
 LLVM = Download("llvm-mingw-20260922-ucrt-x86_64.zip", "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-x86_64.zip", "e3ad77d117a4bea19a7a3b333341824d79a5a371004a10e25b8504e7b3047666")
 TENSORFLOW = Download("libtensorflow-2.18.1.zip", "https://storage.googleapis.com/tensorflow/versions/2.18.1/libtensorflow-cpu-windows-x86_64.zip", "28acdcea6c6b34828cf0e95e67802b0f3577d51bc2e8915de811b7aa0b04452d")
 VC_RUNTIME = Download("Microsoft.VCLibs.x64.14.00.Desktop.appx", "https://download.microsoft.com/download/4/7/c/47c6134b-d61f-4024-83bd-b9c9ea951c25/Microsoft.VCLibs.x64.14.00.Desktop.appx", "b56a9101f706f9d95f815f5b7fa6efbac972e86573d378b96a07cff5540c5961")
+SDL2_MAC = Download("SDL2-2.32.10.dmg", "https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.dmg", "4a7ac31640d70214e848f994be8a12849c0f97918a7e6c2e27a40036166d1a7f")
 MAC_WHEELS = {
     "x86_64": Download("essentia_tensorflow-2.1b6.dev1110-cp311-cp311-macosx_10_9_x86_64.whl", "https://files.pythonhosted.org/packages/25/02/28409a08eb938e212a29c3fdbc6638e7ed1fb54c8ebbb00e4c5981c788d3/essentia_tensorflow-2.1b6.dev1110-cp311-cp311-macosx_10_9_x86_64.whl", "23107204efda0bec2d2ad52db0faffbbe2b80cd00d9e93c79badbbe70d2ddee2"),
     "arm64": Download("essentia_tensorflow-2.1b6.dev1110-cp311-cp311-macosx_11_0_arm64.whl", "https://files.pythonhosted.org/packages/5f/bc/8ab3c74f700ed243833663cef1bad9341a1d7321d983db6fbeb51ec5ec75/essentia_tensorflow-2.1b6.dev1110-cp311-cp311-macosx_11_0_arm64.whl", "e0a24d41af205e2c3af866a347b987a39b43a497e6bb6ca771a8d8e81048d58f"),
@@ -141,6 +143,38 @@ def build_windows(root, uv):
     (installed / "build.json").write_text(json.dumps({"sources": source_fingerprint(root), "compiler": LLVM.sha256}), encoding="utf-8")
 
 
+def prepare_mac_sdl2(root):
+    directory = sdl_compat_directory()
+    if directory is None:
+        return
+    target = directory / SDL2_NAME
+    if target.exists():
+        if digest(target) != SDL2_SHA256:
+            raise RuntimeError(f"Checksum mismatch: {target}. Move this file aside and retry; it was not overwritten.")
+        return
+    print("Preparing official project-local SDL2 for the Essentia macOS wheel (no Homebrew/admin installation)...", flush=True)
+    image = download(SDL2_MAC, root / "vendor/downloads")
+    with TemporaryDirectory(prefix="mab-sdl2-") as temporary:
+        mount = Path(temporary) / "volume"
+        mount.mkdir()
+        subprocess.run(["/usr/bin/hdiutil", "attach", str(image), "-readonly", "-nobrowse", "-noautoopen", "-mountpoint", str(mount)], check=True, capture_output=True, timeout=60)
+        try:
+            binary = mount / "SDL2.framework/Versions/A/SDL2"
+            if digest(binary) != SDL2_SHA256:
+                raise RuntimeError("Official SDL2 binary checksum mismatch; refusing to install")
+            # Preserve the unmodified universal Mach-O binary and its signature.
+            # sdl12-compat searches @loader_path/libSDL2-2.0.0.dylib first.
+            partial = target.with_name(f"{target.name}.{uuid4().hex}.partial")
+            try:
+                shutil.copyfile(binary, partial)
+                shutil.copyfile(mount / "License.txt", directory / "SDL2-LICENSE.txt")
+                partial.replace(target)
+            finally:
+                partial.unlink(missing_ok=True)
+        finally:
+            subprocess.run(["/usr/bin/hdiutil", "detach", str(mount)], check=True, capture_output=True, timeout=60)
+
+
 def install_mac(root, uv):
     if sys.version_info[:2] != (3, 11):
         raise RuntimeError("The macOS start script must use Python 3.11 for the pinned Essentia wheel")
@@ -151,6 +185,7 @@ def install_mac(root, uv):
     # Avoid two distributions owning the same 'essentia' package directory.
     subprocess.run([uv, "pip", "uninstall", "--python", sys.executable, "essentia", "essentia-tensorflow"], check=True)
     subprocess.run([uv, "pip", "install", "--python", sys.executable, "--only-binary", ":all:", "numpy>=1.26,<2", str(wheel)], check=True)
+    prepare_mac_sdl2(root)
 
 
 def verify_features(runtime):
@@ -190,6 +225,9 @@ def ensure_essentia(settings, root, uv, *, basic=False, force_build=False):
         raise RuntimeError("Automatic Essentia setup supports Windows x64 and macOS Intel/Apple Silicon")
     with_mood = settings.essentia_setup_mood and not basic
     with_tensorflow = settings.essentia_setup_tensorflow and not basic
+    if system == "Darwin" and settings.essentia_native_executable is None:
+        # Repair an already installed wheel BEFORE the first capability probe.
+        prepare_mac_sdl2(root)
     runtime = feature_runtime(settings)
     ready = False
     try:

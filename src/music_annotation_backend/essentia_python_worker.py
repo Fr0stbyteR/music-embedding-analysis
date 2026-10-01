@@ -5,6 +5,7 @@ import math
 import sys
 
 import numpy as np
+from .essentia_macos import require_macos_sdl2
 
 SCALARS = {
     "rms": "RMS", "energy": "Energy", "loudness": "Loudness", "zeroCrossingRate": "ZeroCrossingRate",
@@ -17,6 +18,7 @@ REQUIRED = set(SCALARS.values()) | set(BANDS.values()) | {"FrameCutter", "Window
 
 
 def probe():
+    require_macos_sdl2()
     print("Essentia probe: importing native package and TensorFlow algorithms...", file=sys.stderr, flush=True)
     import essentia
     import essentia.standard as es
@@ -47,6 +49,7 @@ def regions(classes, duration, hop_seconds, minimum_duration, name):
 
 
 def analyze(audio, algorithm, o):
+    require_macos_sdl2()
     import essentia.standard as es
     from .essentia_api import ALGORITHMS, EssentiaOptions
     if algorithm not in ALGORITHMS:

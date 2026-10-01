@@ -1,12 +1,15 @@
 """Isolated macOS adapter; identical standard C++ frontends and tensor layouts."""
 import math
 import numpy as np
+from .essentia_macos import require_macos_sdl2
 
 def predict(pool, graph, inputs, outputs, squeeze=True):
+    require_macos_sdl2()
     import essentia.standard as es
     return es.TensorflowPredict(graphFilename=graph, inputs=[inputs], outputs=outputs, squeeze=squeeze)(pool)
 
 def backbone(audio, family, graph, hop_frames):
+    require_macos_sdl2()
     import essentia
     import essentia.standard as es
     if family not in {"musicnn", "effnet", "tempo"} or not 1 <= hop_frames <= 2048: raise ValueError("Invalid TF options")
@@ -41,6 +44,7 @@ def backbone(audio, family, graph, hop_frames):
     return {"protocol": 1, "matrix": rows, **({"tags": tags} if family == "musicnn" else {})}
 
 def head(values, graph, inputs, output, width, output_width):
+    require_macos_sdl2()
     import essentia
     import essentia.standard as es
     if not 1 <= width <= 1280 or not 1 <= output_width <= 400 or len(values) % width: raise ValueError("Invalid TF head size")

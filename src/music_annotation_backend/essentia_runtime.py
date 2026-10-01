@@ -21,10 +21,13 @@ def feature_runtime(settings):
         return NativeEssentia(executable, settings.essentia_native_timeout_seconds,
             probe_timeout_seconds=settings.essentia_probe_timeout_seconds)
     spec = importlib.util.find_spec("essentia")
-    paths = [Path(__file__).with_name(name) for name in ("essentia_python_worker.py", "essentia_tf_worker.py")]
+    paths = [Path(__file__).with_name(name) for name in ("essentia_python_worker.py", "essentia_tf_worker.py", "essentia_macos.py")]
     if spec and spec.origin:
         paths.extend(Path(spec.origin).parent.glob("*.so"))
         paths.append(Path(spec.origin))
+        sdl2 = Path(spec.origin).parent / ".dylibs/libSDL2-2.0.0.dylib"
+        if sdl2.is_file():
+            paths.append(sdl2)
     return NativeEssentia(Path(sys.executable), settings.essentia_native_timeout_seconds,
         command_prefix=[sys.executable, "-m", "music_annotation_backend.essentia_python_worker"],
         expected_runtime="essentia-python", signature_paths=paths,

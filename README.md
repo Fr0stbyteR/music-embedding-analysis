@@ -164,7 +164,8 @@ POST /v1/interactive-assets/{assetId}:mood-curve
 - **API 返回 401**：使用本次启动 JSON 输出中的令牌重新 Authorize。健康检查无需令牌。
 - **macOS 阻止打开下载文件**：根据系统提示在“隐私与安全性”中允许已确认来源的文件，或在终端使用 `bash start.command`；无需关闭系统安全保护。
 - **Intel Mac 安装 llvmlite 时要求 LLVM**：使用更新的 `pyproject.toml` 和 `uv.lock`。Intel Mac 单独固定 Numba 0.62.1／llvmlite 0.45.1 的官方 wheel，不需要手动编译 LLVM；其他平台保留原有版本。
-- **macOS 首次 Essentia 探测超时**：首次载入 NumPy／TensorFlow 可能较慢，能力探测默认等待 180 秒。可在 `.env` 设置 `MAB_ESSENTIA_PROBE_TIMEOUT_SECONDS`（30–1800 秒）；分析计算超时仍由 `MAB_ESSENTIA_NATIVE_TIMEOUT_SECONDS` 控制。失败时保留最后一段 worker 日志，不会跳过 DSP／VA／TensorFlow 自检。
+- **Apple Silicon 弹出 `Fatal error! Cannot continue! Failed loading SDL2 library.`**：官方 Essentia ARM wheel 打包了 SDL 1.2 兼容层，却遗漏 SDL2。更新项目后重新运行 `bash start.command`，启动脚本会从 SDL 官方下载并校验 SDL2 2.32.10（zlib 许可），将未修改的 Intel/ARM 通用库及许可证放入当前项目的 `.venv`，在探测前补齐依赖；无需 Homebrew、管理员权限或设置 `DYLD_LIBRARY_PATH`。已安装的旧环境也会自动修复，后续启动不重复下载。直接绕过启动脚本时，缺库会报告可读错误，不再触发系统致命弹窗。
+- **macOS 首次 Essentia 探测超时**：先更新启动脚本，排除上述 SDL2 缺库导致的弹窗阻塞。首次载入 NumPy／TensorFlow 也可能较慢，能力探测默认等待 180 秒。可在 `.env` 设置 `MAB_ESSENTIA_PROBE_TIMEOUT_SECONDS`（30–1800 秒）；分析计算超时仍由 `MAB_ESSENTIA_NATIVE_TIMEOUT_SECONDS` 控制。失败时保留最后一段 worker 日志，不会跳过 DSP／VA／TensorFlow 自检。
 
 ## 许可证
 

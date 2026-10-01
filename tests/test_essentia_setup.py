@@ -32,6 +32,7 @@ def install(tmp_path, monkeypatch):
     runtime = Runtime(tmp_path)
     checks = []
     monkeypatch.setattr(setup, "feature_runtime", lambda _: runtime)
+    monkeypatch.setattr(setup, "prepare_mac_sdl2", lambda _: None)
     monkeypatch.setattr(setup, "verify_features", lambda _: checks.append("features"))
     return settings, runtime, checks, tmp_path
 
@@ -176,7 +177,10 @@ def test_mac_installs_architecture_specific_pinned_wheel(tmp_path, monkeypatch, 
         return folder / entry.name
     monkeypatch.setattr(setup, "download", download)
     monkeypatch.setattr(setup.subprocess, "run", lambda command, **kwargs: commands.append(command))
+    prepared = []
+    monkeypatch.setattr(setup, "prepare_mac_sdl2", lambda root: prepared.append((root, len(commands))))
     setup.install_mac(tmp_path, "uv")
+    assert prepared == [(tmp_path, 2)]
     assert downloads == [setup.MAC_WHEELS[machine]]
     assert len(downloads[0].sha256) == 64
     assert commands[0][1:3] == ["pip", "uninstall"]

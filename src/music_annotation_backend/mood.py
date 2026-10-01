@@ -15,6 +15,7 @@ from .config import Settings
 from .schemas import Asset, MoodCurveRequest
 from .native_essentia import NativeEssentia
 from .essentia_runtime import native_executable
+from .essentia_macos import require_macos_sdl2
 
 
 class MoodUnavailable(RuntimeError):
@@ -53,6 +54,7 @@ class MoodAnalyzer:
             reason = "Restart with start.command to prepare and verify the native Essentia wheel and VA weights."
         elif reason is None:
             try:
+                require_macos_sdl2()
                 from essentia.standard import TensorflowPredictMusiCNN, TensorflowPredict2D
             except (ImportError, OSError, RuntimeError) as error:
                 reason = f"Essentia TensorFlow algorithms could not load: {error}"
@@ -70,6 +72,7 @@ class MoodAnalyzer:
         if self.native_selected:
             self.models = None  # Native models live only inside each isolated job.
         else:
+            require_macos_sdl2()
             from essentia.standard import TensorflowPredictMusiCNN, TensorflowPredict2D
             self.models = (
                 TensorflowPredictMusiCNN(graphFilename=str(paths[0]), output="model/dense/BiasAdd", lastPatchMode="repeat"),
