@@ -128,6 +128,13 @@ class InteractiveLibrosaRequest(ApiModel):
     cache_policy: Literal["use", "refresh"] = "use"
 
 
+class MoodCurveRequest(ApiModel):
+    window_seconds: float = Field(default=6, ge=3, le=60, allow_inf_nan=False)
+    hop_seconds: float = Field(default=1, ge=0.1, le=30, allow_inf_nan=False)
+    timeline_duration_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    cache_policy: Literal["use", "refresh"] = "use"
+
+
 class ProjectCreate(ApiModel):
     name: str = Field(min_length=1, max_length=200)
     directory: str

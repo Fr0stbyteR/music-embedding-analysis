@@ -19,17 +19,15 @@ if [ "$(uname -s)" != Darwin ]; then
     printf 'This launcher is for macOS. See README.md for Windows setup.\n' >&2
     exit 1
 fi
-case "${1:-}" in
-    ''|--basic) ;;
-    --help|-h)
-        printf 'Usage: bash start.command [--basic]\nDefault: CLAP audio/text analysis. --basic: librosa only, no model downloads.\n'
-        exit 0 ;;
-    *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
-esac
-if [ "$#" -gt 1 ]; then
-    printf 'Expected at most one option.\n' >&2
-    exit 2
-fi
+for option in "$@"; do
+    case "$option" in
+        --basic|--prepare-only) ;;
+        --help|-h)
+            printf 'Usage: bash start.command [--basic] [--prepare-only]\nDefault: CLAP + Essentia features and VA. --basic: librosa + 29 Essentia features, no model weights.\n'
+            exit 0 ;;
+        *) printf 'Unknown option: %s\n' "$option" >&2; exit 2 ;;
+    esac
+done
 
 if command -v uv >/dev/null 2>&1; then
     uv_bin="$(command -v uv)"

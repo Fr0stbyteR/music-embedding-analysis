@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     cors_origin_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
     maximum_upload_bytes: int = 2 * 1024 * 1024 * 1024
     log_level: str = "info"
+    mood_embedding_graph: Path | None = None
+    mood_regression_graph: Path | None = None
+    essentia_native_executable: Path | None = None
+    essentia_native_timeout_seconds: float = Field(default=1800, ge=30, le=10800)
+    essentia_setup: Literal["auto", "off"] = "auto"
+    essentia_setup_mood: bool = True
+    omr_python: Path | None = None
+    omr_auto_install: bool = True
+    omr_timeout_seconds: float = Field(default=1800, ge=30, le=10800)
 
     def prepare(self) -> None:
         self.data_root.mkdir(parents=True, exist_ok=True)

@@ -145,6 +145,7 @@ def _read_windows(asset: Asset, start: float, end: float, target_rate: int) -> n
 
 def relevance_curve(
     asset: Asset, request: SemanticCurveRequest, providers: ProviderRegistry, cache_root: Path,
+    on_partial=None, cancelled=lambda: False,
 ) -> SemanticCurveResult:
     provider = _choose_provider(request.provider_id, providers)
     prompts = request.prompts or [request.keyword]
@@ -157,14 +158,31 @@ def relevance_curve(
     cache_path = cache_root / f"{hashlib.sha256(cache_descriptor.encode('utf-8')).hexdigest()}.json"
     if request.cache_policy != "refresh" and cache_path.exists():
         cached = SemanticCurveResult.model_validate_json(cache_path.read_text(encoding="utf-8"))
+        if on_partial:
+            on_partial(0, cached.model_copy(update={"cached": True}), len(cached.points))
         return cached.model_copy(update={"cached": True})
 
     context_seconds = min(request.window_seconds, max(1.0, asset.duration_seconds))
+    if asset.duration_seconds > 10800 or max(0, asset.duration_seconds - context_seconds) / request.hop_seconds >= 20000:
+        raise ValueError("Relevance curves support up to 3 hours and 20000 windows; increase hopSeconds")
     if asset.duration_seconds <= context_seconds:
         starts = np.array([0.0], dtype=np.float64)
     else:
         starts = np.arange(0.0, asset.duration_seconds - context_seconds + request.hop_seconds * 0.001, request.hop_seconds)
-    batch_size = 24
+    if asset.duration_seconds > 10800 or len(starts) > 20000:
+        raise ValueError("Relevance curves support up to 3 hours and 20000 windows; increase hopSeconds")
+    batch_size = 8
+    timeline_scale = request.timeline_duration_seconds / asset.duration_seconds if request.timeline_duration_seconds else 1.0
+    def partial(scores, offset):
+        if cancelled():
+            raise RuntimeError("Relevance analysis cancelled")
+        if on_partial:
+            values = np.mean(scores, axis=1) if request.aggregation == "mean" else np.max(scores, axis=1)
+            points = [SemanticCurvePoint(time_seconds=float(min(asset.duration_seconds, start + context_seconds / 2) * timeline_scale), score=float(value), cosine_similarity=float(value * 2 - 1)) for start, value in zip(starts[offset:offset + len(values)], values, strict=True)]
+            on_partial(offset, SemanticCurveResult(asset_id=asset.id, keyword=request.keyword, prompts=prompts, provider_id=provider.provider_id, provider_name=provider.display_name, window_seconds=request.window_seconds, hop_seconds=request.hop_seconds, aggregation=request.aggregation, points=points), len(starts))
+    def check_cancelled():
+        if cancelled():
+            raise RuntimeError("Relevance analysis cancelled")
     supports_embedding_cache = type(provider).embed_audio_for_text is not Provider.embed_audio_for_text
     if supports_embedding_cache:
         embedding_descriptor = json.dumps({
@@ -177,33 +195,47 @@ def relevance_curve(
         with _cache_lock(embedding_path):
             if request.cache_policy != "refresh" and embedding_path.exists():
                 audio_embeddings = np.load(embedding_path, allow_pickle=False)
+                scores = []
+                for offset in range(0, len(starts), batch_size):
+                    check_cancelled()
+                    batch_scores = provider.score_audio_embeddings_text(audio_embeddings[offset:offset + batch_size], prompts)
+                    scores.append(batch_scores); partial(batch_scores, offset)
+                prompt_scores = np.concatenate(scores, axis=0)
             else:
                 batches: list[np.ndarray] = []
+                scores = []
                 for offset in range(0, len(starts), batch_size):
+                    check_cancelled()
                     windows = np.stack([
                         _read_window(asset, float(start), context_seconds, provider.sample_rate)
                         for start in starts[offset:offset + batch_size]
                     ])
-                    batches.append(provider.embed_audio_for_text(windows))
+                    embeddings = provider.embed_audio_for_text(windows)
+                    batches.append(embeddings)
+                    batch_scores = provider.score_audio_embeddings_text(embeddings, prompts)
+                    scores.append(batch_scores); partial(batch_scores, offset)
+                prompt_scores = np.concatenate(scores, axis=0)
                 audio_embeddings = np.concatenate(batches, axis=0).astype(np.float32, copy=False)
+                check_cancelled()
                 temporary_embeddings = embedding_path.with_suffix(".tmp")
                 with temporary_embeddings.open("wb") as file:
                     np.save(file, audio_embeddings, allow_pickle=False)
                 temporary_embeddings.replace(embedding_path)
-        prompt_scores = provider.score_audio_embeddings_text(audio_embeddings, prompts)
     else:
         score_batches: list[np.ndarray] = []
         for offset in range(0, len(starts), batch_size):
+            check_cancelled()
             windows = np.stack([
                 _read_window(asset, float(start), context_seconds, provider.sample_rate)
                 for start in starts[offset:offset + batch_size]
             ])
-            score_batches.append(provider.score_audio_text(windows, prompts))
+            scores = provider.score_audio_text(windows, prompts)
+            score_batches.append(scores); partial(scores, offset)
         prompt_scores = np.concatenate(score_batches, axis=0)
+    check_cancelled()
     aggregated = np.mean(prompt_scores, axis=1) if request.aggregation == "mean" else np.max(prompt_scores, axis=1)
     mapped_scores = [float(score) for score in aggregated]
 
-    timeline_scale = request.timeline_duration_seconds / asset.duration_seconds if request.timeline_duration_seconds else 1.0
     points = [
         SemanticCurvePoint(
             time_seconds=float(min(asset.duration_seconds, start + context_seconds / 2) * timeline_scale),
@@ -248,7 +280,7 @@ def _choose_provider(provider_id: str | None, providers: ProviderRegistry):
         if not provider.supports_text_embeddings:
             raise ValueError(f"provider {provider_id} does not support text embeddings")
         return provider
-    for candidate_id in ("laion_clap_music_htsat_base", "muq_mulan_large", "mock"):
+    for candidate_id in ("clap_music", "m2d_clap_2025", "laion_clap_music_htsat_base", "muq_mulan_large", "mock"):
         provider = providers.get(candidate_id)
         if provider.model is not None and provider.supports_text_embeddings:
             return provider

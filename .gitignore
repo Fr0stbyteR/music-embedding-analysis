@@ -2,6 +2,7 @@
 .env
 !.env.example
 .pytest_cache/
+.tmp/
 __pycache__/
 *.py[cod]
 .music-annotation-data/

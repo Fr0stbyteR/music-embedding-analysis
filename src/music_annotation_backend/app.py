@@ -19,8 +19,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from . import __version__
 from .analysis import analyze_range, inspect_asset
 from .config import Settings
+from .mood import MoodAnalyzer, MoodUnavailable
+from .essentia_api import EssentiaAnalyzer, EssentiaUnavailable
+from .schemas import MoodCurveRequest
 from .jobs import JobManager
 from .interactive import describe_asset, relevance_curve
+from .curve_stream import stream_curve
+from .omr import OmrService, EXTENSIONS
 from .librosa_api import analyze_interactive_asset, engine_version
 from .providers import ProviderRegistry
 from .schemas import (
@@ -61,6 +66,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings, app.state.store, app.state.jobs, app.state.providers = cfg, store, jobs, providers
     app.state.interactive_assets = {}
+    mood = MoodAnalyzer(cfg)
+    app.state.mood = mood
+    essentia = EssentiaAnalyzer(cfg)
+    app.state.essentia = essentia
+    omr = OmrService(cfg)
+    app.state.omr = omr
 
     bearer = HTTPBearer(auto_error=False)
 
@@ -86,6 +97,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ImportError:
             pass
         return Capabilities(devices=devices, providers=providers.capabilities())
+
+    @app.get("/v1/omr/capabilities", dependencies=protected)
+    def omr_capabilities():
+        return omr.capabilities()
+
+    @app.post("/v1/omr", response_model=JobAccepted, status_code=202, dependencies=protected)
+    async def recognize_score(request: Request, x_file_name: str | None = Header(default=None)):
+        name = Path(unquote(x_file_name or "score.png").replace("\\", "/")).name
+        suffix = Path(name).suffix.lower()
+        if suffix not in EXTENSIONS:
+            raise HTTPException(status_code=422, detail="Choose a score image or PDF")
+        folder = cfg.data_root / "omr-uploads" / __import__('uuid').uuid4().hex
+        folder.mkdir(parents=True)
+        source = folder / f"score{suffix}"
+        try:
+            size = 0
+            with source.open("wb") as output:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > 50 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="Score upload exceeds 50 MiB")
+                    output.write(chunk)
+            if not size:
+                raise HTTPException(status_code=422, detail="Score upload is empty")
+        except BaseException:
+            source.unlink(missing_ok=True)
+            raise
+        async def runner(progress):
+            return await omr.recognize(source, name, progress)
+        job = jobs.submit("score-omr", runner)
+        return JobAccepted(job_id=job.id, state=job.state)
 
     @app.post("/v1/interactive-assets", response_model=Asset, status_code=201, dependencies=protected)
     async def upload_interactive_asset(request: Request, x_file_name: str | None = Header(default=None)) -> Asset:
@@ -154,6 +196,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/v1/interactive-assets/{asset_id}:relevance-curve-stream", dependencies=protected)
+    async def progressive_relevance_curve(asset_id: UUID, value: SemanticCurveRequest):
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        return StreamingResponse(stream_curve(asset, value, providers, cfg.data_root / "relevance-cache"), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     @app.post("/v1/interactive-assets/{asset_id}:librosa", dependencies=protected)
     async def interactive_librosa(asset_id: UUID, value: InteractiveLibrosaRequest) -> dict:
         asset = app.state.interactive_assets.get(asset_id)
@@ -163,6 +212,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return await asyncio.to_thread(analyze_interactive_asset, asset, value, cfg.data_root / "librosa-cache")
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/mood/capabilities", dependencies=protected)
+    def mood_capabilities() -> dict:
+        return mood.capabilities()
+
+    @app.get("/v1/essentia/capabilities", dependencies=protected)
+    def essentia_capabilities() -> dict:
+        return essentia.capabilities()
+
+    @app.post("/v1/interactive-assets/{asset_id}:essentia", dependencies=protected)
+    async def interactive_essentia(asset_id: UUID, value: InteractiveLibrosaRequest) -> dict:
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        try:
+            return await asyncio.to_thread(essentia.analyze, asset, value)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except EssentiaUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
+
+    @app.post("/v1/interactive-assets/{asset_id}:mood-curve", dependencies=protected)
+    async def interactive_mood(asset_id: UUID, value: MoodCurveRequest) -> dict:
+        asset = app.state.interactive_assets.get(asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="interactive asset is not available; upload it again")
+        try:
+            return await asyncio.to_thread(mood.analyze, asset, value)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except MoodUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
 
     @app.post("/v1/providers/{provider_id}:load", response_model=JobAccepted, status_code=202, dependencies=protected)
     async def load_provider(provider_id: str, request: ProviderLoadRequest) -> JobAccepted:

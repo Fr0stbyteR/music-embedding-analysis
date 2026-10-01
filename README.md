@@ -14,9 +14,10 @@ Windows 双击根目录的 **`start.cmd`**；macOS 双击 **`start.command`**。
 2. 自动准备 Python 3.11、`.venv` 和锁定版本的依赖。
 3. 首次从 `.env.example` 创建 `.env`；已有配置不会被覆盖。
 4. 安装所选模型依赖，默认从 ModelScope 下载音乐 CLAP（包含文本编码器与分词器）。
-5. 在本机启动服务，终端显示访问地址和会话令牌。
+5. 自动准备原生 Essentia：Windows x64 使用项目内 LLVM 工具链构建 C++ worker；macOS Intel / Apple Silicon 安装固定版本的官方 C++ Python wheel，无需 Visual Studio、Xcode 或 WASM。
+6. 准备官方 DEAM/MusiCNN VA 权重，逐一试算全部 29 个 Essentia 特征并执行一次 VA 推理，通过后才启动服务。
 
-首次下载包含数 GB 的模型／依赖，请预留空间并等待终端出现 `Application startup complete`。后续启动复用环境和缓存。macOS 默认使用 CPU；Apple Silicon 和 Intel 的模型依赖使用兼容版本，不自动启用 MPS。
+首次下载包含数 GB 的模型／依赖，请预留空间并等待终端出现 `Application startup complete`。Windows 首次还有原生编译阶段，TensorFlow DLL 约 910 MiB；无需管理员权限。后续启动复用环境、编译产物与验证缓存，不重复构建。macOS 默认使用 CPU；Apple Silicon 和 Intel 的模型依赖使用兼容版本，不自动启用 MPS。
 
 如果 ZIP 解压后双击提示权限不足，在项目目录打开终端，执行一次：
 
@@ -31,13 +32,17 @@ chmod +x start.command
 bash start.command
 ```
 
-只使用 librosa 分析，不安装／加载嵌入模型：Windows 在 PowerShell 中执行 `./start.cmd --basic`，macOS 执行：
+只使用 librosa 和 29 个 Essentia DSP 模组，不下载／加载 CLAP 或 VA 权重：Windows 在 PowerShell 中执行 `./start.cmd --basic`，macOS 执行：
 
 ```bash
 bash start.command --basic
 ```
 
-基础模式首次仍需联网安装 Python 和基础依赖，但不下载模型，也不会修改 `.env`。不提供真实的语义识别结果。
+基础模式首次仍需联网安装 Python、依赖和原生 Essentia 运行时，但不下载模型权重，也不会修改已有 `.env`。不提供语义识别或 VA 模型结果。
+
+只准备依赖而不启动 HTTP：Windows `./start.ps1 -PrepareOnly`，macOS `bash start.command --prepare-only`。任何安装、校验或试算失败都会中止，并显示原因，不会把不可用的分析模组报告为就绪。Windows x64 的独立 LLVM 构建、29 项分析和真实 VA 推理已实测；macOS 两种架构已纳入 CI 首装与真实 API 测试，仍需由对应 runner 执行验证。
+
+Essentia 库使用 AGPL-3.0（或上游商业许可），VA 权重使用 CC BY-NC-SA 4.0（非商业）。它们不受本项目 MIT 许可覆盖，分发或商用前请审查上游条款，见 [原生运行时说明](native/essentia/README.md)。
 
 服务就绪后打开 <http://127.0.0.1:49321/docs>。先展开 `GET /v1/health`，点击 **Try it out → Execute**；返回 200 表示服务已启动。其余 API 需点击 **Authorize**，填入终端 JSON 中的 `token`（只填令牌，不加 `Bearer`）。默认每次启动生成新令牌。停止服务按 **Ctrl+C**。
 
@@ -77,6 +82,8 @@ uv run --no-sync pytest
 | `MAB_AUTO_LOAD_CHECKPOINT_PATH` | 可选的本地模型路径 |
 | `MAB_HUGGINGFACE_CACHE` | 可选的专用 Hugging Face 缓存目录 |
 | `MAB_CORS_ORIGIN_REGEX` | 允许的浏览器来源，默认 localhost / 127.0.0.1 |
+| `MAB_ESSENTIA_SETUP` | 默认 `auto`：启动自动准备、验证 Essentia；`off` 完全跳过（此时不保证 Essentia 可用） |
+| `MAB_ESSENTIA_SETUP_MOOD` | 默认 `true`：准备 VA 权重；`false` 仅保证 29 个 DSP 模组可用 |
 
 | 模式 | 配置值 | 准备方式 |
 | --- | --- | --- |
@@ -106,12 +113,28 @@ MAB_AUTO_LOAD_ALLOW_DOWNLOAD=true
 
 ## API 使用流程
 
+### Windows 原生 Essentia / VA
+
+VA 曲线可以通过 Essentia C++ + TensorFlow C API 在 Windows 原生运行，
+不需要 Essentia Python 绑定或 WSL。已有 C++ 工具链时，在后端目录一次性运行：
+
+```powershell
+./scripts/build-essentia-native.ps1 -DownloadModels
+```
+
+之后仍用原来的启动器，后端自动发现 worker。原生计算、模型权重和依赖都在
+后端项目，前端无需新增服务。此构建是标准算法子集、CPU 推理；Essentia 为
+AGPL、模型权重为 CC BY-NC-SA 4.0，不属于本项目的 MIT 授权。
+详见 [VA 模型配置](docs/mood-va.md)和[原生构建说明](native/essentia/README.md)。
+
 交互分析无需先建项目：
 
 ```text
 POST /v1/interactive-assets
 POST /v1/interactive-assets/{assetId}:describe
 POST /v1/interactive-assets/{assetId}:librosa
+POST /v1/interactive-assets/{assetId}:essentia
+POST /v1/interactive-assets/{assetId}:mood-curve
 ```
 
 上传请求体为原始音频字节，`X-File-Name` 是 URL 编码的文件名。`:describe` 接受 `startSeconds`、`endSeconds`、可选 `providerId` 和 `maximumResults`；`:librosa` 接受 `algorithm`、`options` 和 `cachePolicy`（`use` / `refresh`）。完整请求字段见 `/docs`。
@@ -119,6 +142,8 @@ POST /v1/interactive-assets/{assetId}:librosa
 项目标注流程：注册可信音频路径 → 编译检测计划 → 验证计划 → 小范围预览 → 运行 → 人工确认。预览保存证据但不创建标注；运行结果以 `suggested` / `model` 保存，不覆盖人工确认结果。模型加载、探测和检测任务通过 `/v1/jobs/{jobId}` 查询进度。
 
 ## 文档与目录
+
+- [Essentia 原生特征模块](docs/essentia-features.md)：29 项指标、矩阵与可编辑标记，参数、缓存和数值含义。
 
 - [后端架构](docs/backend-architecture.md)：存储、异步任务与标注循环。
 - [模型选择](docs/model-selection.md)与[已有模型测试](docs/model-smoke-test.md)：模型能力、限制与本地 CPU 测量。

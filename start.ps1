@@ -1,4 +1,4 @@
-param([switch]$Basic)
+param([switch]$Basic, [switch]$PrepareOnly)
 
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
@@ -45,6 +45,7 @@ try {
     if ($Basic) {
         $launchArguments += "--basic"
     }
+    if ($PrepareOnly) { $launchArguments += "--prepare-only" }
     & $uvExecutable @launchArguments
     exit $LASTEXITCODE
 } catch {

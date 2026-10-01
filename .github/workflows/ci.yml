@@ -11,12 +11,24 @@ jobs:
       matrix:
         os: [windows-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      MAB_AUTO_LOAD_PROVIDER: ''
+      MAB_TEST_REQUIRE_ESSENTIA: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
       - run: uv sync --locked --python 3.11 --extra dev
+      - name: Windows first-run Essentia setup (all DSP + real VA inference)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./start.ps1 -PrepareOnly
+      - name: macOS first-run Essentia setup (all DSP + real VA inference)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: bash start.command --prepare-only
       - run: uv run --no-sync pytest
       - name: Windows launcher smoke test
         if: runner.os == 'Windows'
@@ -25,7 +37,7 @@ jobs:
           $backend = Start-Process -FilePath cmd.exe -ArgumentList '/c start.cmd --basic' -WindowStyle Hidden -PassThru -RedirectStandardOutput startup.log -RedirectStandardError startup-error.log
           try {
             $ready = $false
-            for ($attempt = 0; $attempt -lt 90; $attempt++) {
+            for ($attempt = 0; $attempt -lt 180; $attempt++) {
               try {
                 $health = Invoke-RestMethod -Uri http://127.0.0.1:49321/v1/health -TimeoutSec 1
                 if ($health.protocolVersion -eq 'music-annotation/1') {
@@ -52,7 +64,7 @@ jobs:
           bash start.command --basic > startup.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for i in {1..90}; do
+          for i in {1..180}; do
             if curl -fsS http://127.0.0.1:49321/v1/health; then
               exit 0
             fi
@@ -67,5 +79,5 @@ jobs:
       - name: macOS CLAP dependency check
         if: runner.os == 'macOS'
         run: |
-          uv sync --locked --python 3.11 --extra clap
+          uv sync --locked --python 3.11 --inexact --extra clap
           uv run --no-sync python -c "import torch; from transformers import ClapModel, ClapProcessor; from modelscope import snapshot_download; print(torch.__version__)"

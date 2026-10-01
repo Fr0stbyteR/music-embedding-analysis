@@ -23,7 +23,7 @@ exit /b %launch_status%
 
 :help
 echo Usage: start.cmd [--basic]
-echo Default: CLAP audio/text analysis. --basic: librosa only, no model downloads.
+echo Default: CLAP + Essentia features and VA. --basic: librosa + 29 Essentia features, no model weights.
 exit /b 0
 
 :usage_error

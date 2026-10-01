@@ -20,10 +20,17 @@ PROVIDER_EXTRAS = {
 }
 
 
+def prepare_essentia(*args, **kwargs):
+    # Import after uv sync: optional provider installation can update NumPy.
+    from music_annotation_backend.essentia_setup import ensure_essentia
+    return ensure_essentia(*args, **kwargs)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--basic", action="store_true", help="Start without an embedding model")
     parser.add_argument("--uv", default="uv", help="uv executable path")
+    parser.add_argument("--prepare-only", action="store_true", help="Prepare and verify dependencies without starting HTTP")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     os.chdir(root)
@@ -58,6 +65,10 @@ def main() -> int:
             os.environ.setdefault("HF_HUB_OFFLINE", "1")
         else:
             print("First model load may download several GB. Wait for 'Application startup complete'.", flush=True)
+    prepare_essentia(settings, root, args.uv, basic=args.basic)
+    if args.prepare_only:
+        print("Backend dependencies and Essentia are ready.", flush=True)
+        return 0
     print(f"API documentation: http://{settings.host}:{settings.port}/docs", flush=True)
     print("Authorize API requests with the token in the upcoming JSON handshake. Stop with Ctrl+C.", flush=True)
     python = root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -71,6 +82,6 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except KeyboardInterrupt:
         raise SystemExit(130)
-    except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+    except (OSError, subprocess.CalledProcessError, ValueError, RuntimeError) as exc:
         print(f"Startup failed: {exc}", file=sys.stderr)
         raise SystemExit(1)

@@ -26,6 +26,7 @@ def workspace(tmp_path, monkeypatch):
         "MAB_AUTO_LOAD_ALLOW_DOWNLOAD=true\n", encoding="utf-8"
     )
     monkeypatch.setattr(sys, "argv", ["launch.py"])
+    monkeypatch.setattr(launcher, "prepare_essentia", lambda *args, **kwargs: None)
     return tmp_path
 
 
@@ -98,4 +99,39 @@ def test_failed_install_never_starts_backend(workspace, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fail)
     monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("Started after failed install"))
     with pytest.raises(subprocess.CalledProcessError):
+        launcher.main()
+
+
+@pytest.mark.parametrize("basic", [False, True])
+def test_essentia_preparation_precedes_http_even_in_basic_mode(workspace, monkeypatch, basic):
+    events = []
+    monkeypatch.setattr(sys, "argv", ["launch.py"] + (["--basic"] if basic else []))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: events.append("provider"))
+    def prepare(settings, root, uv, **kwargs):
+        assert root == workspace
+        assert kwargs["basic"] == basic
+        assert settings.essentia_setup == "auto"
+        events.append("essentia")
+    monkeypatch.setattr(launcher, "prepare_essentia", prepare)
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: events.append("http") or 0)
+    assert launcher.main() == 0
+    assert events == (["essentia", "http"] if basic else ["provider", "essentia", "http"])
+
+
+def test_prepare_only_verifies_without_starting_http(workspace, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["launch.py", "--basic", "--prepare-only"])
+    prepared = []
+    monkeypatch.setattr(launcher, "prepare_essentia", lambda *a, **k: prepared.append(True))
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("Started HTTP during prepare-only"))
+    assert launcher.main() == 0
+    assert prepared == [True]
+
+
+def test_essentia_failure_never_starts_http(workspace, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["launch.py", "--basic"])
+    def fail(*args, **kwargs):
+        raise RuntimeError("Essentia first-run check failed")
+    monkeypatch.setattr(launcher, "prepare_essentia", fail)
+    monkeypatch.setattr(subprocess, "call", lambda *a, **k: pytest.fail("Started after Essentia failure"))
+    with pytest.raises(RuntimeError, match="first-run check"):
         launcher.main()
