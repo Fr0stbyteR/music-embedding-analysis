@@ -18,7 +18,7 @@ jobs:
       MAB_TEST_REQUIRE_ESSENTIA_TF: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
       - run: uv sync --locked --python 3.11 --extra dev
