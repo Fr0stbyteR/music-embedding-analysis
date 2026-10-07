@@ -9,6 +9,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from .librosa_engine import analyze
+from .signal_statistics import SIGNAL_STATISTICS_ALGORITHMS
+from .roughness import ROUGHNESS_ALGORITHMS
 from .schemas import Asset, InteractiveLibrosaRequest
 
 
@@ -16,11 +18,15 @@ SUPPORTED_ALGORITHMS = {
     "beats", "onsets", "nonSilent", "rms", "zeroCrossingRate", "onsetStrength",
     "spectralCentroid", "spectralBandwidth", "spectralRolloff", "spectralFlatness",
     "pitch", "melSpectrogram", "chroma", "mfcc",
-}
+} | SIGNAL_STATISTICS_ALGORITHMS | ROUGHNESS_ALGORITHMS
 
 
 def engine_version() -> str:
-    return hashlib.sha256(Path(__file__).with_name("librosa_engine.py").read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    for name in ("librosa_engine.py", "signal_statistics.py", "roughness.py"):
+        digest.update(name.encode())
+        digest.update(Path(__file__).with_name(name).read_bytes())
+    return digest.hexdigest()
 
 
 def analyze_interactive_asset(asset: Asset, request: InteractiveLibrosaRequest, cache_root: Path) -> dict:

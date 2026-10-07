@@ -14,6 +14,9 @@ except ImportError as exc:
         f"Python package and its dependencies. ({exc})"
     )
 
+from .signal_statistics import SIGNAL_STATISTICS_ALGORITHMS, analyze_signal, describe
+from .roughness import ROUGHNESS_ALGORITHMS, analyze_roughness
+
 
 def number(value: Any) -> float:
     array = np.asarray(value).reshape(-1)
@@ -32,7 +35,11 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         "duration": duration,
     }
 
-    if algorithm == "beats":
+    if algorithm in ROUGHNESS_ALGORITHMS:
+        result.update(analyze_roughness(y, int(sample_rate), algorithm, options))
+    elif algorithm in SIGNAL_STATISTICS_ALGORITHMS:
+        result.update(analyze_signal(y, int(sample_rate), algorithm, options))
+    elif algorithm == "beats":
         hop_length = int(options.get("hopLength", 512))
         start_bpm = float(options.get("startBpm", 120))
         tempo, frames = librosa.beat.beat_track(
@@ -221,4 +228,9 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         }
     else:
         raise ValueError(f"Unsupported analysis algorithm: {algorithm}")
+    if "vectors" in result and algorithm not in SIGNAL_STATISTICS_ALGORITHMS | ROUGHNESS_ALGORITHMS:
+        metadata = result.setdefault("metadata", {})
+        for index, vector in enumerate(result["vectors"]):
+            for key, value in describe(np.asarray(vector)).items():
+                metadata[f"statistics.{index}.{key}"] = value
     return result

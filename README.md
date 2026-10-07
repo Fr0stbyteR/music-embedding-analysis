@@ -144,6 +144,7 @@ POST /v1/interactive-assets/{assetId}:mood-curve
 
 ## 文档与目录
 
+- [信号统计扩展](docs/signal-statistics.md)：18 个 NumPy／SciPy／Librosa 指标、描述统计、缓存及估计限制。
 - [Essentia 原生特征模块](docs/essentia-features.md)：29 项指标、矩阵与可编辑标记，参数、缓存和数值含义。
 - [Essentia TensorFlow 模块](docs/essentia-tensorflow.md)：21 个模型视图、共享推理缓存、启动准备及模型准确性限制。
 

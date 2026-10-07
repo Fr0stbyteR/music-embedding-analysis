@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from music_annotation_backend.app import create_app
 from music_annotation_backend.config import Settings
+from music_annotation_backend.signal_statistics import SIGNAL_STATISTICS_ALGORITHMS
+from music_annotation_backend.roughness import ROUGHNESS_ALGORITHMS
 
 
 def tone_wav() -> bytes:
@@ -49,3 +51,29 @@ def test_interactive_librosa_upload_cache_and_auth(tmp_path: Path) -> None:
         assert refreshed.json()["cache"]["status"] == "refresh"
         unsupported = api.post(url, json={"algorithm": "not-a-feature"}, headers=analysis_headers)
         assert unsupported.status_code == 422
+
+
+def test_signal_statistics_api_cache_and_parameter_validation(tmp_path: Path) -> None:
+    settings = Settings(data_root=tmp_path / "data", model_root=tmp_path / "models", vendor_root=tmp_path / "vendor", session_token="test", auto_load_provider="")
+    with TestClient(create_app(settings)) as api:
+        headers = {"Authorization": "Bearer test", "X-File-Name": "tone.wav", "Content-Type": "audio/wav"}
+        upload = api.post("/v1/interactive-assets", content=tone_wav(), headers=headers)
+        assert upload.status_code == 201, upload.text
+        url = f"/v1/interactive-assets/{upload.json()['id']}:librosa"
+        headers = {"Authorization": "Bearer test"}
+        for algorithm in sorted(SIGNAL_STATISTICS_ALGORITHMS | ROUGHNESS_ALGORITHMS):
+            request = {"algorithm": algorithm, "options": {"hopLength": 256}}
+            first = api.post(url, json=request, headers=headers)
+            assert first.status_code == 200, (algorithm, first.text)
+            data = first.json()
+            assert data["cache"]["status"] == "miss"
+            assert "statistics.0.count" in data["metadata"]
+            second = api.post(url, json=request, headers=headers)
+            assert second.status_code == 200, second.text
+            assert second.json()["cache"]["status"] == "hit"
+            assert second.json()["metadata"] == data["metadata"]
+        invalid = api.post(url, json={"algorithm": "peakAmplitude", "options": {"hopLength": 0}}, headers=headers)
+        assert invalid.status_code == 422, invalid.text
+        assert "hopLength" in invalid.json()["detail"]
+        changed = api.post(url, json={"algorithm": "peakAmplitude", "options": {"hopLength": 128}}, headers=headers)
+        assert changed.json()["cache"]["status"] == "miss"
