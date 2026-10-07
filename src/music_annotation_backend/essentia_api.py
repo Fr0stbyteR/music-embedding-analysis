@@ -15,6 +15,7 @@ from pydantic import ConfigDict, Field, StrictInt, model_validator
 
 from .config import Settings
 from .essentia_runtime import feature_runtime
+from .result_statistics import result_statistics
 from .schemas import ApiModel, Asset, InteractiveLibrosaRequest
 
 VECTOR_ALGORITHMS = {"rms", "energy", "loudness", "zeroCrossingRate", "spectralCentroid", "spectralRolloff", "spectralFlatness", "spectralCrest", "spectralFlux", "spectralEntropy", "spectralComplexity", "hfc", "spectralSpread", "spectralSkewness", "spectralKurtosis", "dissonance", "pitch", "pitchConfidence", "onsetStrength"}
@@ -81,7 +82,7 @@ class EssentiaAnalyzer:
             capability = self.capabilities()
             if not capability["available"] or request.algorithm not in capability["algorithms"]:
                 raise EssentiaUnavailable(capability.get("reason") or "Rebuild the native worker for this algorithm")
-            version = hashlib.sha256(b"".join(Path(__file__).with_name(name).read_bytes() for name in ("essentia_api.py", "native_essentia.py", "essentia_runtime.py"))).hexdigest()
+            version = hashlib.sha256(b"".join(Path(__file__).with_name(name).read_bytes() for name in ("essentia_api.py", "native_essentia.py", "essentia_runtime.py", "result_statistics.py"))).hexdigest()
             descriptor = {"version": version, "asset": asset.content_hash, "algorithm": request.algorithm, "options": options.model_dump(), "native": capability["native"], "executable": self.native.signature}
             key = hashlib.sha256(json.dumps(descriptor, sort_keys=True).encode()).hexdigest()
             self.cache_root.mkdir(parents=True, exist_ok=True)
@@ -104,6 +105,7 @@ class EssentiaAnalyzer:
                 arguments = ["--features", request.algorithm, options.sample_rate, options.frame_length, options.hop_length, options.bands, options.coefficients, options.roll_percent, options.threshold_db, options.minimum_duration, options.confidence, options.key_window, options.tuning]
                 result = self.native._run(arguments, stdin=pcm, timeout=self.native.timeout_seconds)
             self.validate_result(result, request.algorithm, options, len(audio) / options.sample_rate)
+            result_statistics(result)
             result["cache"] = {"status": "refresh" if request.cache_policy == "refresh" else "miss", "createdAt": datetime.now(timezone.utc).isoformat()}
             temporary = cached_path.with_name(f"{key}.{uuid4().hex}.tmp")
             try:

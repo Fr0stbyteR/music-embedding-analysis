@@ -88,9 +88,13 @@ def test_all_native_features_cache_parameters_and_markers(tmp_path):
             if algorithm in VECTOR_ALGORITHMS:
                 assert len(result["vectors"]) == 1
                 assert len(result["vectors"][0]) > 200
+                assert result["metadata"]["statistics.0.count"] == len(result["vectors"][0])
+                assert result["metadata"]["statistics.0.rms"] == pytest.approx(np.sqrt(np.mean(np.square(result["vectors"][0]))))
             elif algorithm in MATRIX_ALGORITHMS:
                 bins = 12 if algorithm == "hpcp" else 27 if algorithm == "barkBands" else 20 if algorithm in {"mfcc", "gfcc"} else 64 if algorithm == "melBands" else 40
                 assert len(result["matrix"][0]) == bins
+                assert result["metadata"]["statistics.matrix.0.count"] == len(result["matrix"]) * bins
+                assert result["metadata"]["statistics.matrix.0.bin.0.count"] == len(result["matrix"])
         pitch = np.array(results["pitch"]["vectors"][0])
         assert np.median(pitch[pitch > 0]) == pytest.approx(440, abs=5)
         rms = results["rms"]["vectors"][0]
@@ -104,6 +108,7 @@ def test_all_native_features_cache_parameters_and_markers(tmp_path):
         cached = api.post(url, json={"algorithm": "rms"}, headers=headers).json()
         assert cached["cache"]["status"] == "hit"
         assert cached["vectors"] == results["rms"]["vectors"]
+        assert cached["metadata"] == results["rms"]["metadata"]
         assert api.post(url, json={"algorithm": "rms", "cachePolicy": "refresh"}, headers=headers).json()["cache"]["status"] == "refresh"
         for request in ({"algorithm": "nonexistent"}, {"algorithm": "rms", "options": {"frameLength": 1000}}, {"algorithm": "rms", "options": {"typo": 1}}):
             assert api.post(url, json=request, headers=headers).status_code == 422

@@ -14,6 +14,7 @@ from pydantic import ConfigDict, Field
 from .schemas import ApiModel
 from .essentia_api import EssentiaUnavailable
 from .essentia_runtime import feature_runtime
+from .result_statistics import result_statistics
 
 MANIFEST = json.loads(Path(__file__).with_name("essentia_tf_models.json").read_text(encoding="utf-8"))
 FILES = {entry["name"]: entry for entry in MANIFEST}
@@ -235,4 +236,4 @@ class TensorflowAnalyzer:
                     result["intervals"], result["labels"] = candidate_regions(values, hop, duration, options.threshold, options.minimum_duration, target)
                 else: result["vectors"] = [values.tolist()]
             notify(1., "Display data prepared")
-            return result
+            return result_statistics(result)

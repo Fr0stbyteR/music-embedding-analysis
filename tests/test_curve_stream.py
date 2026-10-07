@@ -36,8 +36,13 @@ def test_stream_chunks_precede_complete_and_match_legacy_result(tmp_path):
     assert all(event['total'] == 18 for event in chunks)
     points = [point for event in chunks for point in event['result']['points']]
     assert points == events[-1]['result']['points']
+    assert all(not event['result']['metadata'] for event in chunks), 'partial chunks are not whole-song summaries'
+    metadata = events[-1]['result']['metadata']
+    assert metadata['statistics.0.count'] == len(points)
+    assert metadata['statistics.0.mean'] == pytest.approx(np.mean([point['cosineSimilarity'] for point in points]))
     assert points[-1]['timeSeconds'] <= 24
-    assert relevance_curve(asset, request, providers, tmp_path / 'cache').cached
+    cached = relevance_curve(asset, request, providers, tmp_path / 'cache')
+    assert cached.cached and cached.metadata == metadata
 
 
 def test_cancelled_partial_is_not_cached(tmp_path):

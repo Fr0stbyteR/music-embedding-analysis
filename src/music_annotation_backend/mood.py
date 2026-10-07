@@ -16,6 +16,7 @@ from .schemas import Asset, MoodCurveRequest
 from .native_essentia import NativeEssentia
 from .essentia_runtime import native_executable
 from .essentia_macos import require_macos_sdl2
+from .result_statistics import result_statistics
 
 
 class MoodUnavailable(RuntimeError):
@@ -115,6 +116,7 @@ class MoodAnalyzer:
                 try:
                     cached = json.loads(cache_path.read_text(encoding="utf-8"))
                     if cached.get("model") == capability["model"] and len(cached["points"]) == count:
+                        cached["metadata"] = result_statistics({"vectors": [[point[field] for point in cached["points"]] for field in ("valence", "arousal")], "metadata": cached.get("metadata", {})})["metadata"]
                         return {**cached, "cached": True}
                 except (ValueError, TypeError, KeyError, OSError):
                     pass
@@ -137,6 +139,7 @@ class MoodAnalyzer:
                     valence, arousal = self.predict(audio[left:right])
                     points.append({"timeSeconds": round(time, 6), "valence": valence, "arousal": arousal})
             result = {"model": capability["model"], "scale": capability["scale"], "windowSeconds": request.window_seconds, "hopSeconds": request.hop_seconds, "points": points, "cached": False}
+            result["metadata"] = result_statistics({"vectors": [[point[field] for point in points] for field in ("valence", "arousal")]})["metadata"]
             temporary = cache_path.with_name(f"{cache_path.stem}.{uuid4().hex}.tmp")
             try:
                 temporary.write_text(json.dumps(result, allow_nan=False), encoding="utf-8")

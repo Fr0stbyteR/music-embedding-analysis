@@ -23,7 +23,7 @@ SUPPORTED_ALGORITHMS = {
 
 def engine_version() -> str:
     digest = hashlib.sha256()
-    for name in ("librosa_engine.py", "signal_statistics.py", "roughness.py"):
+    for name in ("librosa_engine.py", "signal_statistics.py", "roughness.py", "result_statistics.py"):
         digest.update(name.encode())
         digest.update(Path(__file__).with_name(name).read_bytes())
     return digest.hexdigest()

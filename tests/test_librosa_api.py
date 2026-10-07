@@ -43,9 +43,16 @@ def test_interactive_librosa_upload_cache_and_auth(tmp_path: Path) -> None:
         assert first.status_code == 200, first.text
         assert first.json()["cache"]["status"] == "miss"
         assert first.json()["vectors"][0]
+        assert first.json()["metadata"]["statistics.0.count"] == len(first.json()["vectors"][0])
+        assert first.json()["metadata"]["statistics.0.rms"] > 0
         second = api.post(url, json=request, headers=analysis_headers)
         assert second.status_code == 200
         assert second.json()["cache"]["status"] == "hit"
+        assert second.json()["metadata"] == first.json()["metadata"]
+        matrix = api.post(url, json={"algorithm": "mfcc", "options": {"hopLength": 256}}, headers=analysis_headers)
+        assert matrix.status_code == 200, matrix.text
+        assert matrix.json()["metadata"]["statistics.matrix.0.count"] == sum(map(len, matrix.json()["matrix"]))
+        assert matrix.json()["metadata"]["statistics.matrix.0.bin.0.count"] == len(matrix.json()["matrix"])
         refreshed = api.post(url, json={**request, "cachePolicy": "refresh"}, headers=analysis_headers)
         assert refreshed.status_code == 200
         assert refreshed.json()["cache"]["status"] == "refresh"
@@ -68,6 +75,10 @@ def test_signal_statistics_api_cache_and_parameter_validation(tmp_path: Path) ->
             data = first.json()
             assert data["cache"]["status"] == "miss"
             assert "statistics.0.count" in data["metadata"]
+            assert data["metadata"]["statistics.version"] == 1
+            prefix = "statistics.matrix.0" if "matrix" in data else "statistics.0"
+            if data["metadata"][f"{prefix}.count"]:
+                assert f"{prefix}.rms" in data["metadata"]
             second = api.post(url, json=request, headers=headers)
             assert second.status_code == 200, second.text
             assert second.json()["cache"]["status"] == "hit"

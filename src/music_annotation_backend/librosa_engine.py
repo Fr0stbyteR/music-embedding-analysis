@@ -16,6 +16,7 @@ except ImportError as exc:
 
 from .signal_statistics import SIGNAL_STATISTICS_ALGORITHMS, analyze_signal, describe
 from .roughness import ROUGHNESS_ALGORITHMS, analyze_roughness
+from .result_statistics import result_statistics
 
 
 def number(value: Any) -> float:
@@ -233,4 +234,4 @@ def analyze(payload: dict[str, Any]) -> dict[str, Any]:
         for index, vector in enumerate(result["vectors"]):
             for key, value in describe(np.asarray(vector)).items():
                 metadata[f"statistics.{index}.{key}"] = value
-    return result
+    return result_statistics(result)

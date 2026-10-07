@@ -66,6 +66,12 @@ def test_mood_api_auth_validation_missing_runtime_cache_and_timeline(monkeypatch
         assert result["cached"] is False
         assert [point["timeSeconds"] for point in result["points"]] == [0, 1, 2]
         assert all(point["valence"] == 1 and point["arousal"] == -1 for point in result["points"])
-        assert api.post(url, json=request, headers=headers).json()["cached"] is True
+        assert result["metadata"]["statistics.0.count"] == 3
+        assert result["metadata"]["statistics.0.mean"] == 1
+        assert result["metadata"]["statistics.1.mean"] == -1
+        assert result["metadata"]["statistics.1.rms"] == 1
+        cached = api.post(url, json=request, headers=headers).json()
+        assert cached["cached"] is True
+        assert cached["metadata"] == result["metadata"]
         assert api.post(url, json={**request, "cachePolicy": "refresh"}, headers=headers).json()["cached"] is False
         assert api.post(url, json={**request, "timelineDurationSeconds": 12000}, headers=headers).status_code == 422

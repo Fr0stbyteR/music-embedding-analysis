@@ -76,6 +76,12 @@ def test_native_models_api_and_shared_caches(tmp_path):
             assert result["algorithm"] == algorithm and abs(result["duration"] - 6) < .001
             assert result["metadata"]["scoreKind"] == "model-score-not-calibrated-confidence"
             for value in result.get("matrix", []) + result.get("vectors", []): assert np.isfinite(value).all()
+            if "matrix" in result:
+                assert result["metadata"]["statistics.matrix.0.count"] == sum(map(len, result["matrix"]))
+                assert result["metadata"]["statistics.matrix.0.bin.0.mean"] == pytest.approx(np.mean(np.array(result["matrix"])[:, 0]))
+            elif "vectors" in result:
+                assert result["metadata"]["statistics.0.count"] == len(result["vectors"][0])
+                assert result["metadata"]["statistics.0.mean"] == pytest.approx(np.mean(result["vectors"][0]))
         assert len(results["tfInstrument"]["labels"]) == 40
         assert len(results["tfMoodTheme"]["labels"]) == 56
         assert len(results["tfGenre"]["labels"]) == 87

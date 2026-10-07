@@ -71,10 +71,17 @@ c0 (gain) is omitted. Invalid predictor frames are zero and excluded.
 ## Statistics and cache
 
 Each returned vector has flat numeric metadata fields:
-`statistics.0.count`, `.min`, `.max`, `.mean`, `.median`, `.std`, `.p05`, `.p95`
+`statistics.0.count`, `.min`, `.max`, `.mean`, `.std`, `.rms`
+(Librosa descriptive statistics additionally retain `.median`, `.p05`, `.p95`)
 (replace 0 with the channel index). Standard deviation uses the population
 convention (`ddof=0`). All-invalid data has count 0 and no misleading numeric
-mean. Summaries describe **feature frames across the whole audio**, not a cursor
+mean. Matrices use `statistics.matrix.0.*` for the aggregate and
+`statistics.matrix.0.bin.N.*` for individual bins; legacy LPCC coefficient
+summaries are kept separately. `statistics.version=1` identifies the compact
+whole-result schema. Librosa, native Essentia, Essentia TensorFlow, CLAP relevance
+curves and backend VA curves bundle these summaries with completed results.
+Partial CLAP chunks deliberately have no whole-track summary.
+Summaries describe **feature frames across the whole audio**, not a cursor
 selection, acoustic samples, independent statistical observations, or inferential
 significance. Existing librosa vector modules also return descriptive summaries.
 Constant-amplitude frames have no defined sample skewness/kurtosis and are
@@ -85,19 +92,24 @@ DSP implementation contribute to its version hash. Frontend IndexedDB and folder
 `.audio_toolkit` storage preserve vectors/matrices and statistics. Cache menu
 indicators and bulk cached-module loading use each module's analysis descriptor;
 display color does not invalidate results. Older cached legacy vectors may lack
-summary metadata until explicitly reanalyzed.
+summary metadata; the frontend uses a local fallback for those results.
 
 New DSP results also include `metadata["validity.N"]`: a base64 little-bit-order
 bitmap, bit i indicating whether frame i is a valid observation in vector N.
 For LPCC, N is the coefficient index. Zero remains a legitimate numeric value;
 the bitmap distinguishes it from gated or failed estimates. Existing JSON and
 binary workspace caches preserve these primitive metadata strings.
-The frontend computes range summaries from original numeric arrays. A positive
-selection uses [start,end); otherwise the full audio is used (including an exact
-endpoint control point). Statistics are observation-wise, not time-weighted;
+The frontend displays the bundled summary when there is no positive selection,
+without scanning the whole-track arrays. A positive selection is computed only
+in the frontend from original numeric arrays, uses [start,end), and never sends
+an analysis or statistics request. Browser-generated waveforms/spectrograms,
+editable markers/notes, manually edited curves and older results without a
+summary use the local fallback (whole scope includes an exact endpoint control
+point). Manual curve edits invalidate the bundled summary. Existing workspace
+storage preserves the summary across reopening. Statistics are observation-wise, not time-weighted;
 arithmetic dB averages must not be interpreted as integrated acoustic power.
 Legacy results without a bitmap include finite values only. Reanalyze if missing
-estimate filtering matters. Changes to all three DSP files invalidate the backend
+estimate filtering matters. Changes to the DSP files or summary helper invalidate the backend
 cache version.
 
 ## Roughness estimates

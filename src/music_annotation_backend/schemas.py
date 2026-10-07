@@ -120,6 +120,7 @@ class SemanticCurveResult(ApiModel):
     points: list[SemanticCurvePoint]
     score_kind: Literal["cosine-similarity-not-probability"] = "cosine-similarity-not-probability"
     cached: bool = False
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 
 class InteractiveLibrosaRequest(ApiModel):

@@ -12,6 +12,7 @@ import soundfile as sf
 
 from .planner import CATALOGUE
 from .providers import Provider, ProviderRegistry
+from .result_statistics import result_statistics
 from .schemas import (
     Asset, InteractiveDescribeRequest, InteractiveDescriptionResult, RawSemanticMatch,
     SemanticCurvePoint, SemanticCurveRequest, SemanticCurveResult, SemanticDescription,
@@ -158,6 +159,8 @@ def relevance_curve(
     cache_path = cache_root / f"{hashlib.sha256(cache_descriptor.encode('utf-8')).hexdigest()}.json"
     if request.cache_policy != "refresh" and cache_path.exists():
         cached = SemanticCurveResult.model_validate_json(cache_path.read_text(encoding="utf-8"))
+        summary = result_statistics({"vectors": [[point.cosine_similarity for point in cached.points]], "metadata": cached.metadata})
+        cached = cached.model_copy(update={"metadata": summary["metadata"]})
         if on_partial:
             on_partial(0, cached.model_copy(update={"cached": True}), len(cached.points))
         return cached.model_copy(update={"cached": True})
@@ -248,6 +251,7 @@ def relevance_curve(
         provider_id=provider.provider_id, provider_name=provider.display_name,
         window_seconds=request.window_seconds, hop_seconds=request.hop_seconds,
         aggregation=request.aggregation, points=points,
+        metadata=result_statistics({"vectors": [[point.cosine_similarity for point in points]]})["metadata"],
     )
     temporary = cache_path.with_suffix(f".{threading.get_ident()}.tmp")
     temporary.write_text(result.model_dump_json(by_alias=True), encoding="utf-8")
